@@ -22,6 +22,30 @@ from typing import Any, Dict
 import pandas as pd
 import yaml
 
+# ---- Robust UTC timestamp parser --------------------------------------------
+def _parse_ts_utc(ts: pd.Series) -> pd.Series:
+    """Parse a heterogeneous timestamp series into UTC datetimes.
+    Supports epoch in seconds/milliseconds/nanoseconds, pandas datetimes, or strings.
+    """
+    if ts is None:
+        return pd.Series([], dtype="datetime64[ns, UTC]")
+    s = pd.to_numeric(ts, errors="coerce")
+    # If any numeric found, infer unit by magnitude; else fall back to to_datetime on strings/datetimes
+    if s.notna().any():
+        mx = s.dropna().abs().max()
+        try:
+            # heuristics
+            if mx < 1e11:        # likely seconds
+                return pd.to_datetime(s, unit="s", utc=True, errors="coerce")
+            elif mx < 1e14:      # likely milliseconds
+                return pd.to_datetime(s, unit="ms", utc=True, errors="coerce")
+            else:                 # nanoseconds
+                return pd.to_datetime(s, unit="ns", utc=True, errors="coerce")
+        except Exception:
+            pass
+    # Non-numeric path
+    return pd.to_datetime(ts, utc=True, errors="coerce")
+
 # ---- Flexis enricher (optionnel) --------------------------------------------
 try:
     from rs3_plugin_fleet.flexis import enricher as _flexis_enricher  # type: ignore
@@ -124,7 +148,8 @@ def _ensure_relative_time_columns(df: pd.DataFrame, ctx: Any) -> pd.DataFrame:
         try:
             ts_ms = pd.to_numeric(df["ts_ms"], errors="coerce")
             start_ms = int(pd.Timestamp(sim_start).value // 1_000_000)
-            t_ms = (ts_ms - start_ms).astype("Int64").fillna(0).astype(int)
+            t_ms = (pd.to_numeric(ts_ms, errors="coerce") - start_ms)
+            t_ms = pd.Series(t_ms, index=df.index).astype("Int64").fillna(0).astype(int)
             out = df.copy()
             out["t_ms"] = t_ms
             return out
@@ -134,15 +159,55 @@ def _ensure_relative_time_columns(df: pd.DataFrame, ctx: Any) -> pd.DataFrame:
     # 2) sinon on parse 'timestamp'/'time_utc' en absolu puis on fait la différence
     ts_abs = None
     if "timestamp" in df.columns:
-        ts_abs = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
+        ts_abs = _parse_ts_utc(df["timestamp"])  # robust seconds/ms/ns/strings
     elif "time_utc" in df.columns:
-        ts_abs = pd.to_datetime(df["time_utc"], utc=True, errors="coerce")
+        ts_abs = _parse_ts_utc(df["time_utc"])   # in case time_utc is str
 
     if ts_abs is not None:
-        delta_ms = (ts_abs.view("int64") // 1_000_000) - int(pd.Timestamp(sim_start).value // 1_000_000)
+        # int64 ns → ms
+        delta_ms = (ts_abs.astype("int64") // 1_000_000) - int(pd.Timestamp(sim_start).value // 1_000_000)
         out = df.copy()
-        out["t_ms"] = delta_ms.astype("Int64").fillna(0).astype(int)
+        out["t_ms"] = pd.Series(delta_ms, index=out.index).astype("Int64").fillna(0).astype(int)
         return out
+# ---- AltitudeStage injector -------------------------------------------------
+def _ensure_altitude_stage(pipeline, run_cfg: Dict[str, Any]) -> None:
+    stages = getattr(pipeline, "stages", None)
+    if not isinstance(stages, list):
+        return
+    if any(_stage_name(s) == "AltitudeStage" for s in stages):
+        return
+    try:
+        from rs3_plugin_fleet.plugin_discovery import altitude_loader as _alt
+    except Exception:
+        return
+    # Try common entry points
+    stage = None
+    try:
+        StageCls = getattr(_alt, "AltitudeStage", None)
+        if StageCls:
+            stage = StageCls(run_cfg.get("altitude", {}) or run_cfg.get("plugins", {}).get("altitude", {}) or {})
+    except Exception:
+        stage = None
+    if stage is None:
+        for factory_name in ("build_stage", "build_altitude_stage", "get_stage"):
+            fn = getattr(_alt, factory_name, None)
+            if callable(fn):
+                try:
+                    stage = fn(run_cfg)
+                    break
+                except Exception:
+                    stage = None
+    if stage is None:
+        return
+    # Insert after NoiseInjector if present, else after RoadEnricher, else append near the end before Validators
+    def _find(name):
+        return next((i for i, s in enumerate(stages) if _stage_name(s) == name), None)
+    anchor = _find("NoiseInjector")
+    if anchor is None:
+        anchor = _find("RoadEnricher")
+    insert_pos = anchor + 1 if anchor is not None else max(len(stages) - 1, 0)
+    stages.insert(insert_pos, stage)
+    print("[ADAPTER] Inserted AltitudeStage")
 
     # 3) à défaut, on ne modifie pas (l’export Flexis tombera en fallback fichier vide/erreur)
     return df
@@ -216,6 +281,46 @@ def _patch_pipeline_for_flexis(pipeline, run_cfg: Dict[str, Any]) -> None:
     """
     stages = getattr(pipeline, "stages", None)
     if not isinstance(stages, list):
+        return
+
+    # Ensure AltitudeStage is present if available
+    _ensure_altitude_stage(pipeline, run_cfg)
+# ---- Flexis HTML report post-run hook ---------------------------------------
+def _call_flexis_report_post(ctx, cfg: Dict[str, Any]) -> None:
+    """Generate Flexis HTML report if module is available."""
+    try:
+        from rs3_plugin_fleet.report import flexis_report as _fr
+    except Exception:
+        return
+    df = getattr(ctx, "df", None)
+    if df is None:
+        df = getattr(ctx, "data", None)
+    # Try common entry points: generate, write, build
+    for fn_name in ("generate_report", "write_report", "build_report", "generate_html"):
+        fn = getattr(_fr, fn_name, None)
+        if callable(fn):
+            try:
+                fn(df, cfg)
+                print("[Report] Flexis report generated via", fn_name)
+                return
+            except TypeError:
+                try:
+                    fn(df)
+                    print("[Report] Flexis report generated via", fn_name)
+                    return
+                except Exception:
+                    continue
+    # Last resort: look for a class with run()/process()
+    try:
+        ReportCls = getattr(_fr, "FlexisReport", None)
+        if ReportCls is not None:
+            rep = ReportCls(cfg)
+            if hasattr(rep, "run"):
+                rep.run(df, cfg)
+            elif hasattr(rep, "process"):
+                rep.process(df, cfg)
+            print("[Report] Flexis report generated via FlexisReport class")
+    except Exception:
         return
 
     # 1) remove FinalTailZero
@@ -435,6 +540,10 @@ def main(argv=None) -> int:
             _call_export_flexis_post(ctx, run_cfg)
         except Exception as e:
             print(f"[Flexis] export_flexis post-run failed: {e}")
+        try:
+            _call_flexis_report_post(ctx, run_cfg)
+        except Exception as e:
+            print(f"[Flexis] flexis_report post-run failed: {e}")
 
     return exit_code
 
