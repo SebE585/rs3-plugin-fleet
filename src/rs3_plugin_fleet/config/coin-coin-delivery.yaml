@@ -1,0 +1,170 @@
+client: Coin-Coin Delivery — Rouen demo (stops explicites)
+profiles:
+  parcels_70x2min:
+    hz: 10
+    osrm: { profile: driving, base_url: "http://localhost:5003" }
+    stops_per_vehicle: 70
+    dwell_seconds: { mean: 120, jitter: 0.2 }
+    outdir: data/simulations/ccd_parcels_rouen
+    speed_targets: { residential: 30, primary: 50, motorway: 110 }
+    traffic_profile:
+      - { from: "08:00", to: "09:30", level: heavy }
+      - { from: "09:30", to: "16:30", level: moderate }
+      - { from: "16:30", to: "18:30", level: heavy }
+      - { from: "18:30", to: "23:00", level: free }
+    weather_timeline:
+      - { from: "08:00", to: "11:00", weather: dry }
+      - { from: "11:00", to: "13:00", weather: rain_light }
+      - { from: "13:00", to: "20:00", weather: dry }
+
+  furniture_30x20min:   # (non utilisé pour ce run)
+    hz: 10
+    osrm: { profile: driving, base_url: "http://localhost:5003" }
+    stops_per_vehicle: 30
+    dwell_seconds: { mean: 1200, jitter: 0.1 }
+
+vehicles:
+  - id: "CCD-VL-01"
+    profile: parcels_70x2min
+    stops:
+      # START depot — Romilly-sur-Andelle
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      - { name: "ROU-027", lat: 49.4430, lon: 1.1230, service_s: 120 }
+      - { name: "ROU-054", lat: 49.4429, lon: 1.1203, service_s: 120 }
+      - { name: "ROU-043", lat: 49.4434, lon: 1.1195, service_s: 120 }
+      - { name: "ROU-013", lat: 49.4420, lon: 1.1183, service_s: 120 }
+      - { name: "ROU-029", lat: 49.4418, lon: 1.1162, service_s: 120 }
+      - { name: "ROU-045", lat: 49.4410, lon: 1.1148, service_s: 120 }
+      - { name: "ROU-061", lat: 49.4412, lon: 1.1128, service_s: 120 }
+      - { name: "ROU-036", lat: 49.4413, lon: 1.1117, service_s: 120 }
+      - { name: "ROU-052", lat: 49.4408, lon: 1.1099, service_s: 120 }
+      - { name: "ROU-016", lat: 49.4411, lon: 1.1090, service_s: 120 }
+      - { name: "ROU-024", lat: 49.4402, lon: 1.1131, service_s: 120 }
+      - { name: "ROU-070", lat: 49.4425, lon: 1.1139, service_s: 120 }
+      - { name: "ROU-008", lat: 49.4432, lon: 1.1147, service_s: 120 }
+      - { name: "ROU-059", lat: 49.4431, lon: 1.1154, service_s: 120 }
+      - { name: "ROU-066", lat: 49.4481, lon: 1.1142, service_s: 120 }
+      - { name: "ROU-032", lat: 49.4470, lon: 1.1130, service_s: 120 }
+      - { name: "ROU-057", lat: 49.4464, lon: 1.1112, service_s: 120 }
+      - { name: "ROU-040", lat: 49.4440, lon: 1.1080, service_s: 120 }
+      - { name: "ROU-063", lat: 49.4441, lon: 1.1070, service_s: 120 }
+      - { name: "ROU-025", lat: 49.4474, lon: 1.1061, service_s: 120 }
+      - { name: "ROU-055", lat: 49.4486, lon: 1.1050, service_s: 120 }
+      - { name: "ROU-038", lat: 49.4426, lon: 1.1049, service_s: 120 }
+      - { name: "ROU-015", lat: 49.4469, lon: 1.1035, service_s: 120 }
+      - { name: "ROU-051", lat: 49.4436, lon: 1.1029, service_s: 120 }
+      - { name: "ROU-020", lat: 49.4437, lon: 1.1019, service_s: 120 }
+      - { name: "ROU-034", lat: 49.4465, lon: 1.1010, service_s: 120 }
+      - { name: "ROU-069", lat: 49.4457, lon: 1.1022, service_s: 120 }
+      - { name: "ROU-065", lat: 49.4423, lon: 1.1001, service_s: 120 }
+      - { name: "ROU-044", lat: 49.4472, lon: 1.0998, service_s: 120 }
+      - { name: "ROU-028", lat: 49.4456, lon: 1.0990, service_s: 120 }
+      - { name: "ROU-049", lat: 49.4422, lon: 1.0988, service_s: 120 }
+      - { name: "ROU-031", lat: 49.4409, lon: 1.0977, service_s: 120 }
+      - { name: "ROU-060", lat: 49.4475, lon: 1.0970, service_s: 120 }
+      - { name: "ROU-009", lat: 49.4480, lon: 1.0971, service_s: 120 }
+      - { name: "ROU-056", lat: 49.4416, lon: 1.0961, service_s: 120 }
+      - { name: "ROU-067", lat: 49.4438, lon: 1.0950, service_s: 120 }
+      - { name: "ROU-022", lat: 49.4485, lon: 1.0952, service_s: 120 }
+      - { name: "ROU-042", lat: 49.4467, lon: 1.0940, service_s: 120 }
+      - { name: "ROU-053", lat: 49.4459, lon: 1.0930, service_s: 120 }
+      - { name: "ROU-064", lat: 49.4468, lon: 1.0921, service_s: 120 }
+      - { name: "ROU-037", lat: 49.4479, lon: 1.0910, service_s: 120 }
+      - { name: "ROU-048", lat: 49.4461, lon: 1.0901, service_s: 120 }
+      - { name: "ROU-011", lat: 49.4451, lon: 1.0906, service_s: 120 }
+      - { name: "ROU-058", lat: 49.4447, lon: 1.0899, service_s: 120 }
+      - { name: "ROU-033", lat: 49.4439, lon: 1.0891, service_s: 120 }
+      - { name: "ROU-041", lat: 49.4404, lon: 1.0877, service_s: 120 }
+      - { name: "ROU-046", lat: 49.4453, lon: 1.0869, service_s: 120 }
+      - { name: "ROU-021", lat: 49.4424, lon: 1.0862, service_s: 120 }
+      - { name: "ROU-014", lat: 49.4442, lon: 1.0849, service_s: 120 }
+      - { name: "ROU-030", lat: 49.4482, lon: 1.0839, service_s: 120 }
+      - { name: "ROU-003", lat: 49.4471, lon: 1.0882, service_s: 120 }
+      - { name: "ROU-062", lat: 49.4455, lon: 1.0844, service_s: 120 }
+      - { name: "ROU-010", lat: 49.4407, lon: 1.1041, service_s: 120 }
+      - { name: "ROU-006", lat: 49.4415, lon: 1.1008, service_s: 120 }
+      - { name: "ROU-001", lat: 49.4428, lon: 1.0955, service_s: 120 }
+      - { name: "ROU-047", lat: 49.4444, lon: 1.1125, service_s: 120 }
+      - { name: "ROU-032", lat: 49.4470, lon: 1.1130, service_s: 120 }
+      - { name: "ROU-012", lat: 49.4476, lon: 1.1159, service_s: 120 }
+      - { name: "ROU-050", lat: 49.4477, lon: 1.1161, service_s: 120 }
+      - { name: "ROU-039", lat: 49.4488, lon: 1.1175, service_s: 120 }
+      - { name: "ROU-023", lat: 49.4460, lon: 1.1188, service_s: 120 }
+      - { name: "ROU-035", lat: 49.4450, lon: 1.1169, service_s: 120 }
+      - { name: "ROU-005", lat: 49.4458, lon: 1.1210, service_s: 120 }
+      - { name: "ROU-068", lat: 49.4406, lon: 1.1171, service_s: 120 }
+      - { name: "ROU-019", lat: 49.4489, lon: 1.1101, service_s: 120 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+
+road_enrich:
+  stream_url_base: "http://localhost:5002/nearest_road_batch_stream"
+  batch_size: 400
+  search_radius_m: 120
+  fallback_radius_m: 220
+  max_retries: 3
+  connect_timeout_s: 6.0
+  read_timeout_s: 25.0
+  request_timeout_s: 30.0
+
+speed_sync:
+  keep_start_zero: true
+  head_window_s: 2.0
+
+geo_spike_filter:
+  vmax_kmh: 160.0
+  hard_jump_m: 500.0
+
+legs_retimer:
+  speed_by_type:
+    motorway: 110
+    trunk: 100
+    primary: 70
+    secondary: 50
+    tertiary: 40
+    residential: 30
+    service: 20
+    unclassified: 50
+    unknown: 50
+  default_kmh: 50
+  use_column_target_speed: true
+  min_dt: 0.05
+  hz: 10.0
+
+stages:
+  - SpeedSync
+  - RoadEnricher
+  - GeoSpikeFilter
+  - LegsRetimer
+  - StopWaitInjector
+  - StopSmoother
+  - InitialStopLocker
+  - MidStopsLocker
+  - FinalStopLocker
+  - IMUProjector
+  - NoiseInjector
+  - AltitudeStage
+  - FlexisFeaturesStage
+  - FinalTailZero
+  - Validators
+  - Exporter
+
+flexis:
+  infra_probability_per_km: { residential: 0.05, primary: 0.01 }
+  driver_events_rate_per_hour: { harsh_brake: 2.0, aggressive_accel: 2.0 }
+population_density_mode: "osm_heuristic"  # ou "raster:/path/grid.tif" / "none"
+
+exporter:
+  report:
+    enabled: true
+    standalone_map: true
+    inline_data: true
+    map_sample_hz: 20.0
+    charts_sample_hz: 2.0
+    break_on_nan: true
+    max_segment_gap_s: 1.0
+
+validators:
+  cadence:
+    expected_hz: 10.0
+    tolerance_ppm: 100000   # ±1,0 % (remettras 50 000 quand tout est propre)
+    enabled: true

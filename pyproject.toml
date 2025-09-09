@@ -7,8 +7,8 @@ name = "rs3-plugin-fleet"
 version = "0.4.1"
 description = "Run one RS3 simulation pipeline per vehicle using a fleet YAML."
 readme = "README.md"
-license = { file = "LICENSE" }
-authors = [{ name = "Coin-Coin", email = "dev@coincoin.example" }]
+license = {file = "LICENSE"}
+authors = [{ name = "RoadSimulator3", email = "sebastien.edet@gmail.com" }]
 requires-python = ">=3.10"
 dependencies = [
   "numpy>=1.24",

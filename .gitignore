@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+dist/
+build/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# RS3 outputs
+data/
+reports/
+*.html
+*.map.html
+
+# Local env
+.env
+.cache/
