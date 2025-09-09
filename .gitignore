@@ -18,4 +18,14 @@ reports/
 
 # Local env
 .env
-.cache/
+.cache/# sorties et artefacts
+data/
+*.parquet
+*.csv
+*.html
+*.map.html
+# environnements locaux
+.venv/
+.env
+__pycache__/
+*.py[cod]
