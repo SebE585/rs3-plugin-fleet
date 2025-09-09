@@ -135,19 +135,33 @@ def _tod_minutes(ts: pd.Series) -> pd.Series:
     except Exception:
         return pd.Series(0, index=ts.index)
 
-def _label_from_schedule(mins: pd.Series, schedule: list[dict], key: str) -> pd.Series:
+def _label_from_schedule(mins: pd.Series, schedule, key: str) -> pd.Series:
     """
     Map minutes-of-day → labels selon une liste de fenêtres [{from,to,level|weather}], avec wrap minuit géré.
+    `schedule` peut être list/tuple/set/None/objet — on le normalise en liste.
     """
-    if not schedule:
+    # Normalisation en liste
+    if schedule is None:
         return pd.Series("", index=mins.index)
+    if isinstance(schedule, (tuple, set)):
+        schedule = list(schedule)
+    elif not isinstance(schedule, list):
+        # dict/DataFrame/objet → liste singleton
+        schedule = [schedule]
+    if len(schedule) == 0:
+        return pd.Series("", index=mins.index)
+
     lab = np.array([""] * len(mins), dtype=object)
     for item in schedule:
-        f = _parse_hhmm(item.get("from", "00:00"))
-        t = _parse_hhmm(item.get("to", "00:00"))
-        val = item.get(key) or item.get("level") or item.get("weather") or ""
+        try:
+            f = _parse_hhmm(item.get("from", "00:00"))
+            t = _parse_hhmm(item.get("to", "00:00"))
+            val = item.get(key) or item.get("level") or item.get("weather") or ""
+        except AttributeError:
+            # au cas où item n'est pas un dict
+            f, t, val = 0, 0, ""
         mask = (mins >= f) & (mins < t) if t >= f else ((mins >= f) | (mins < t))
-        lab[mask.values] = val
+        lab[getattr(mask, "values", mask)] = val
     return pd.Series(lab, index=mins.index)
 
 def _is_night_from_minutes(mins: pd.Series, night_bounds=(20*60, 6*60)) -> pd.Series:
@@ -290,16 +304,16 @@ class FlexisEnricher:
         else:
             mins = pd.Series(0, index=df.index)
 
-        weather = _label_from_schedule(mins, self.cfg.weather_timeline, key="weather") \
-                  if self.cfg.weather_timeline else pd.Series("", index=df.index)
+        wt = self.cfg.weather_timeline
+        weather = _label_from_schedule(mins, wt, key="weather") if (wt is not None and len(wt) > 0) else pd.Series("", index=df.index)
         _upsert_series(df, "flexis_weather", weather)
 
         night = _is_night_from_minutes(mins)
         _upsert_series(df, "flexis_night", night)
 
         # 5) trafic
-        traffic = _label_from_schedule(mins, self.cfg.traffic_profile, key="level") \
-                  if self.cfg.traffic_profile else pd.Series("", index=df.index)
+        tp = self.cfg.traffic_profile
+        traffic = _label_from_schedule(mins, tp, key="level") if (tp is not None and len(tp) > 0) else pd.Series("", index=df.index)
         _upsert_series(df, "flexis_traffic_level", traffic)
 
         # 6) statut livraison

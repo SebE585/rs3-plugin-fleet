@@ -86,6 +86,7 @@ class FlexisExporter:
             else:
                 abs_time = _pd.to_datetime([], utc=True, errors="coerce")
         out["time_utc"] = abs_time.dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        # ns → ms (évite FutureWarning: Series.view)
         out["ts_ms"] = (abs_time.astype("int64") // 1_000_000).astype("int64")
 
         # Tail-stop safety (optional)
@@ -143,7 +144,7 @@ class FlexisExporter:
         return out
 
     # Pipeline compatibility
-    def run(self, ctx: Any) -> _pd.DataFrame:
+    def run(self, ctx: Any):
         df = getattr(ctx, "df", None)
         if df is None:
             df = getattr(ctx, "data", None)
@@ -154,7 +155,7 @@ class FlexisExporter:
             setattr(ctx, "df", out)
         except Exception:
             pass
-        # Return a simple truthy value instead of a DataFrame (avoids pandas truth-value ambiguity)
+        # Retourne un booléen pour éviter bool(DataFrame) dans le core Result
         return True
 
 # ---- Flexis enricher integration -------------------------------------------
@@ -240,7 +241,7 @@ class _StageRunnerShim:
             setattr(ctx, "df", out)
         except Exception:
             pass
-        # Return a simple truthy value instead of a DataFrame (avoids pandas truth-value ambiguity)
+        # Retourne un booléen pour éviter bool(DataFrame)
         return True
 
 class _FlexisExportFromEnricher:
@@ -296,7 +297,7 @@ def _patch_pipeline_for_flexis(pipeline, run_cfg: Dict[str, Any]) -> None:
     def _exporter_factory():
         # a) Try the project-provided exporter
         try:
-            from rs3_plugin_fleet.flexis_export import Stage as _FlexisExporterStage  # type: ignore
+            from rs3_plugin_fleet.utils.flexis_export import Stage as _FlexisExporterStage  # type: ignore
             return _FlexisExporterStage()
         except Exception:
             pass
