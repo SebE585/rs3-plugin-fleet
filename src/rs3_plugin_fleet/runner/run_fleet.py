@@ -185,7 +185,9 @@ class _FlexisExportFromEnricher:
                 if EnrCls is not None:
                     enr_cfg = cfg_all.get("flexis", {}) or {}
                     enr = EnrCls(enr_cfg)
-                    df = getattr(ctx, "df", None) or getattr(ctx, "data", None)
+                    df = getattr(ctx, "df", None)
+                    if df is None:
+                        df = getattr(ctx, "data", None)
                     if df is not None:
                         new_df = enr.apply(df, context={"config": cfg_all})
                         setattr(ctx, "df", new_df)
@@ -193,7 +195,9 @@ class _FlexisExportFromEnricher:
             print(f"[Flexis] Enricher apply failed (non-fatal): {e}")
 
         # 2) (re)créer t_ms/t_s si absent pour satisfaire utils/flexis_export
-        df2 = getattr(ctx, "df", None) or getattr(ctx, "data", None)
+        df2 = getattr(ctx, "df", None)
+        if df2 is None:
+            df2 = getattr(ctx, "data", None)
         df2 = _ensure_relative_time_columns(df2, ctx)
         setattr(ctx, "df", df2)
 
@@ -273,7 +277,9 @@ def _call_export_flexis_post(ctx, cfg: Dict[str, Any]) -> None:
     fn = getattr(_flexis_enricher, "export_flexis", None)
     if not callable(fn):
         return
-    df = getattr(ctx, "df", None) or getattr(ctx, "data", None)
+    df = getattr(ctx, "df", None)
+    if df is None:
+        df = getattr(ctx, "data", None)
     try:
         fn(df, ctx, cfg)
     except TypeError:
