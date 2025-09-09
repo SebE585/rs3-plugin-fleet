@@ -3,19 +3,29 @@
 Runner Fleet — lance une simulation multi-profils à partir d'un YAML.
 
 - Normalise ctx.sim_start (UTC) TRÈS tôt → plus de dates 1970.
-- Injecte AltitudeStage si dispo.
+- Injecte AltitudeStage si dispo (sinon fallback post-enrich).
 - Maintient Exporter core + ajoute FlexisExporter (dernier).
 - Filets post-run : export_flexis() (si présent) + rapport Flexis HTML.
+- Coupage d'un éventuel arrêt terminal artificiel (close_tail_stop).
 """
 
 from __future__ import annotations
 
 import argparse
+import re
 from copy import deepcopy
 from typing import Any, Dict
 
 import pandas as pd
 import yaml
+
+# ---------- helpers simples ---------------------------------------------------
+def _slugify(s: str) -> str:
+    if not s:
+        return "default"
+    s = re.sub(r"[^0-9A-Za-z._-]+", "-", str(s).strip())
+    s = re.sub(r"-{2,}", "-", s).strip("-")
+    return s or "default"
 
 # ---------- Robust UTC timestamp parser --------------------------------------
 def _parse_ts_utc(ts: pd.Series) -> pd.Series:
@@ -69,22 +79,41 @@ def _print_pipeline(stages) -> None:
 def _stage_name(s) -> str:
     return getattr(s, "name", getattr(s, "__class__", type("X", (), {})).__name__)
 
+# --- Helper: safely fetch DataFrame from context without pandas truthiness ---
+def _ctx_df(ctx):
+    """Safely fetch the DataFrame from context without triggering pandas truthiness."""
+    df = getattr(ctx, "df", None)
+    if df is None:
+        df = getattr(ctx, "data", None)
+    return df
+
 def _ensure_export_defaults(run_cfg: Dict[str, Any]) -> None:
     """Garantit output/export/start_at pour éviter 1970 et assurer les sorties."""
-    out_dir = (
+    # 1) output dir: on dérive d'abord du nom/client sinon fallback 'default'
+    base_name = (
+        run_cfg.get("output", {}).get("dir_name")
+        or run_cfg.get("name")
+        or run_cfg.get("client")
+        or "default"
+    )
+    explicit_dir = (
         run_cfg.get("output", {}).get("dir")
         or run_cfg.get("export", {}).get("dir")
         or run_cfg.get("outdir")
-        or "data/simulations/default"
     )
+    out_dir = explicit_dir or f"data/simulations/{_slugify(base_name)}"
     run_cfg.setdefault("output", {})
     run_cfg["output"]["dir"] = out_dir
+
+    # 2) export defaults
     exp = run_cfg.setdefault("export", {})
     exp.setdefault("format", "parquet")
     exp.setdefault("filename", "flexis.parquet")
     exp.setdefault("events_filename", "events.jsonl")
     exp.setdefault("close_tail_stop", True)
     exp.setdefault("tail_window", 5)  # secondes
+
+    # 3) start_at si absent → 08:00 Europe/Paris aujourd'hui
     if "start_at" not in run_cfg:
         ts_local = pd.Timestamp(pd.Timestamp.now(tz="Europe/Paris").date())
         run_cfg["start_at"] = ts_local.replace(hour=8, minute=0, second=0).strftime("%Y-%m-%d %H:%M")
@@ -155,6 +184,48 @@ def _ensure_relative_time_columns(df: pd.DataFrame, ctx: Any) -> pd.DataFrame:
 
     return df
 
+def _trim_tail_stop(df: pd.DataFrame, ctx: Any, run_cfg: Dict[str, Any]) -> pd.DataFrame:
+    """
+    Supprime un arrêt artificiel prolongé en fin de trace.
+    Utilise t_ms si dispo, sinon tente timestamp/time_utc.
+    """
+    if df is None or len(df) == 0:
+        return df if df is not None else pd.DataFrame()
+
+    export_cfg = (run_cfg.get("export") or {})
+    if not export_cfg.get("close_tail_stop", True):
+        return df
+    tail_s = int(export_cfg.get("tail_window", 5))
+
+    # temps relatif t_ms
+    tdf = _ensure_relative_time_columns(df, ctx)
+    if "t_ms" not in tdf.columns:
+        return df
+
+    # colonne vitesse
+    v = None
+    for c in ("speed_mps", "speed", "v"):
+        if c in tdf.columns:
+            v = pd.to_numeric(tdf[c], errors="coerce"); break
+    if v is None:
+        return df
+
+    # cherche la dernière séquence >= tail_s avec v ~ 0
+    t_ms = pd.to_numeric(tdf["t_ms"], errors="coerce").ffill().fillna(0).astype("int64")
+    is_stop = (v.fillna(0) < 0.05)
+    if not is_stop.any():
+        return df
+
+    last_t = int(t_ms.iloc[-1])
+    win_start = last_t - tail_s * 1000
+    tail_mask = (t_ms >= win_start)
+    if (is_stop & tail_mask).sum() >= 2:
+        before_tail = t_ms < win_start
+        if before_tail.any():
+            cut_idx = before_tail[before_tail].index[-1]
+            return tdf.loc[:cut_idx].copy()
+    return df
+
 # ---------- AltitudeStage injector -------------------------------------------
 def _ensure_altitude_stage(pipeline, run_cfg: Dict[str, Any]) -> None:
     stages = getattr(pipeline, "stages", None)
@@ -201,7 +272,9 @@ class _StageRunnerShim:
         self.inner = inner
         self.name = getattr(inner, "name", "Exporter")
     def run(self, ctx):
-        df = getattr(ctx, "df", None) or getattr(ctx, "data", None) or pd.DataFrame()
+        df = _ctx_df(ctx)
+        if df is None:
+            df = pd.DataFrame()
         out = self.inner.process(df, ctx)
         try:
             setattr(ctx, "df", out)
@@ -224,15 +297,18 @@ class _FlexisExportFromEnricher:
                 EnrCls = getattr(_flexis_enricher, "FlexisEnricher", None)
                 if EnrCls is not None:
                     enr = EnrCls(cfg_all.get("flexis", {}) or {})
-                    df = getattr(ctx, "df", None) or getattr(ctx, "data", None)
+                    df = _ctx_df(ctx)
                     if df is not None:
                         new_df = enr.apply(df, context={"config": cfg_all})
-                        setattr(ctx, "df", new_df)
+                        try:
+                            setattr(ctx, "df", new_df)
+                        except Exception:
+                            pass
         except Exception as e:
             print(f"[Flexis] Enricher apply failed (non-fatal): {e}")
 
         # garantir t_ms
-        df2 = getattr(ctx, "df", None) or getattr(ctx, "data", None)
+        df2 = _ctx_df(ctx)
         df2 = _ensure_relative_time_columns(df2, ctx)
         try:
             if "t_ms" in df2.columns:
@@ -240,6 +316,35 @@ class _FlexisExportFromEnricher:
         except Exception:
             pass
         setattr(ctx, "df", df2)
+
+        # altitude fallback: si aucun AltitudeStage n'a tourné, tente un enrichissement direct
+        try:
+            from rs3_plugin_fleet.plugin_discovery import altitude_loader as _alt
+            df_alt = _ctx_df(ctx)
+            if df_alt is not None:
+                for fn_name in ("enrich_altitude", "add_altitude", "apply", "process", "enrich"):
+                    fn = getattr(_alt, fn_name, None)
+                    if callable(fn):
+                        try:
+                            new_alt_df = fn(df_alt, ctx) if fn.__code__.co_argcount >= 2 else fn(df_alt)
+                            if isinstance(new_alt_df, pd.DataFrame) and "altitude" in new_alt_df.columns:
+                                setattr(ctx, "df", new_alt_df)
+                                print("[ADAPTER] Altitude applied via altitude_loader fallback")
+                                break
+                        except Exception:
+                            continue
+        except Exception:
+            pass
+
+        # couper un éventuel arrêt terminal artificiel
+        try:
+            cfg_all = getattr(ctx, "config", {}) or {}
+            df2 = _ctx_df(ctx)
+            trimmed = _trim_tail_stop(df2, ctx, cfg_all)
+            if isinstance(trimmed, pd.DataFrame) and len(trimmed) > 0:
+                setattr(ctx, "df", trimmed)
+        except Exception:
+            pass
 
         # export Flexis
         exp = self._make_exporter()
@@ -303,7 +408,7 @@ def _call_flexis_report_post(ctx, cfg: Dict[str, Any]) -> None:
         from rs3_plugin_fleet.report import flexis_report as _fr
     except Exception:
         return
-    df = getattr(ctx, "df", None) or getattr(ctx, "data", None)
+    df = _ctx_df(ctx)
     for fn_name in ("generate_report", "write_report", "build_report", "generate_html"):
         fn = getattr(_fr, fn_name, None)
         if callable(fn):
@@ -330,7 +435,7 @@ def _call_export_flexis_post(ctx, cfg: Dict[str, Any]) -> None:
     fn = getattr(_flexis_enricher, "export_flexis", None)
     if not callable(fn):
         return
-    df = getattr(ctx, "df", None) or getattr(ctx, "data", None)
+    df = _ctx_df(ctx)
     try:
         fn(df, ctx, cfg)
     except TypeError:
