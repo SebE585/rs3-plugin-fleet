@@ -169,6 +169,10 @@ def _ensure_relative_time_columns(df: pd.DataFrame, ctx: Any) -> pd.DataFrame:
         out = df.copy()
         out["t_ms"] = pd.Series(delta_ms, index=out.index).astype("Int64").fillna(0).astype(int)
         return out
+
+    # rien à faire → renvoyer tel quel
+    return df
+
 # ---- AltitudeStage injector -------------------------------------------------
 def _ensure_altitude_stage(pipeline, run_cfg: Dict[str, Any]) -> None:
     stages = getattr(pipeline, "stages", None)
@@ -209,8 +213,6 @@ def _ensure_altitude_stage(pipeline, run_cfg: Dict[str, Any]) -> None:
     stages.insert(insert_pos, stage)
     print("[ADAPTER] Inserted AltitudeStage")
 
-    # 3) à défaut, on ne modifie pas (l’export Flexis tombera en fallback fichier vide/erreur)
-    return df
 
 class _StageRunnerShim:
     """Adapte un exporter exposant process(df, ctx) à l'API pipeline run(ctx)."""
@@ -275,16 +277,68 @@ class _FlexisExportFromEnricher:
 
 def _patch_pipeline_for_flexis(pipeline, run_cfg: Dict[str, Any]) -> None:
     """
-    - Supprime FinalTailZero (arrêt prolongé).
-    - Conserve le core Exporter et ajoute FlexisExporter juste après (puis force Flexis en tout dernier).
+    - Insère AltitudeStage si disponible (après NoiseInjector ou RoadEnricher).
+    - Supprime FinalTailZero (arrêt prolongé indésirable dans l'export).
+    - Conserve le core Exporter et ajoute FlexisExporter juste après.
     - Impose l'ordre : SpeedSync avant IMUProjector et avant Exporter.
+    - Force FlexisExporter strictement en dernier.
     """
     stages = getattr(pipeline, "stages", None)
     if not isinstance(stages, list):
         return
 
-    # Ensure AltitudeStage is present if available
+    # 0) AltitudeStage si dispo
     _ensure_altitude_stage(pipeline, run_cfg)
+
+    # 1) remove FinalTailZero
+    stages[:] = [s for s in stages if _stage_name(s) != "FinalTailZero"]
+
+    # 2) fabrique d'exporteur Flexis (préférence utils/flexis_export.Stage)
+    def _exporter_factory():
+        try:
+            from rs3_plugin_fleet.utils.flexis_export import Stage as _FlexisExporterStage  # type: ignore
+            return _FlexisExporterStage()
+        except Exception:
+            # fallback très simple si jamais le module n’est pas présent
+            class _Fallback:
+                name = "Exporter"
+                def process(self, df, ctx): return df
+                def run(self, ctx): return True
+            return _Fallback()
+
+    # 3) ajouter FlexisExporter après Exporter (sans supprimer Exporter)
+    exp_idx = next((i for i, s in enumerate(stages) if _stage_name(s) == "Exporter"), None)
+    has_flexis_exp = any(_stage_name(s) == "FlexisExporter" for s in stages)
+    try:
+        if not has_flexis_exp:
+            inst = _FlexisExportFromEnricher(_exporter_factory)
+            if exp_idx is not None:
+                stages.insert(exp_idx + 1, inst)
+                print("[ADAPTER] Inserted FlexisExporter after core Exporter")
+            else:
+                stages.append(inst)
+                print("[ADAPTER] Appended FlexisExporter at pipeline end (no core Exporter found)")
+    except Exception as e:
+        print(f"[ADAPTER] Warning: could not construct Flexis enricher-backed exporter: {e}")
+
+    # 4) impose order: SpeedSync before IMUProjector and Exporter
+    def _move_before(name_a, name_b):
+        a = next((i for i, s in enumerate(stages) if _stage_name(s) == name_a), None)
+        b = next((i for i, s in enumerate(stages) if _stage_name(s) == name_b), None)
+        if a is not None and b is not None and a > b:
+            item = stages.pop(a)
+            b = next((i for i, s in enumerate(stages) if _stage_name(s) == name_b), None)
+            stages.insert(b, item)
+
+    _move_before("SpeedSync", "IMUProjector")
+    _move_before("SpeedSync", "Exporter")
+
+    # 5) FlexisExporter strictement dernier (le core Exporter juste avant)
+    flex_idx = next((i for i, s in enumerate(stages) if _stage_name(s) == "FlexisExporter"), None)
+    if flex_idx is not None and flex_idx != len(stages) - 1:
+        item = stages.pop(flex_idx)
+        stages.append(item)
+        
 # ---- Flexis HTML report post-run hook ---------------------------------------
 def _call_flexis_report_post(ctx, cfg: Dict[str, Any]) -> None:
     """Generate Flexis HTML report if module is available."""
