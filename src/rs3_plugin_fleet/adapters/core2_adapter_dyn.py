@@ -1,241 +1,169 @@
 # -*- coding: utf-8 -*-
 """
-Adapter dynamique 'core2' simplifié — sans import statique.
-
-- Résolution dynamique des classes core2 à l'exécution
-- Pipeline par défaut robuste avec gestion d'erreurs
-- Configuration flexible par YAML
-- Code simplifié et plus maintenable
-
-API exposée:
-  - get_pipeline_cls() -> type
-  - get_context_cls() -> type  
-  - build_default_stages(cfg: dict) -> list[object]
+Adapter dynamique → implémentation core2.*
+Expose l'API minimale attendue par rs3_plugin_fleet.pipeline.builder :
+  - get_pipeline_cls()
+  - get_result_cls()
+  - get_context_cls()
+  - build_default_stages(cfg)
 """
-
 from __future__ import annotations
-import os
+
+from typing import Any, Dict, List, Optional, Tuple
 import importlib
-import traceback
-from typing import Any, Dict, List, Optional
-
-# Module "implémentation" par défaut (configurable via env)
-CORE_MOD = os.environ.get("RS3_CORE_MODULE", "core2")
-
-# Cache pour éviter les imports répétés
-_CACHE: Dict[str, Any] = {}
 
 
-def _resolve_symbol(path: str) -> Any:
-    """Résout dynamiquement un symbole module.classe"""
-    if path in _CACHE:
-        return _CACHE[path]
-    
-    try:
-        mod_path, _, name = path.rpartition(".")
-        if not mod_path or not name:
-            raise ImportError(f"Invalid symbol path: {path}")
-        
-        mod = importlib.import_module(mod_path)
-        obj = getattr(mod, name)
-        _CACHE[path] = obj
-        print(f"[ADAPTER] Resolved {path} ✓")
-        return obj
-        
-    except Exception as e:
-        print(f"[ADAPTER] Failed to resolve {path}: {e}")
-        raise
+# ---------------------------------------------------------------------------
+# Utils
+
+def _resolve(dotted: str):
+    """
+    Importe 'pkg.mod:Class' OU 'pkg.mod.Class' et retourne l'objet visé.
+    """
+    if ":" in dotted:
+        mod_name, attr = dotted.split(":", 1)
+    else:
+        parts = dotted.split(".")
+        mod_name, attr = ".".join(parts[:-1]), parts[-1]
+    mod = importlib.import_module(mod_name)
+    obj = getattr(mod, attr)
+    return obj
 
 
-def _safe_resolve(paths: List[str]) -> Optional[Any]:
-    """Essaie plusieurs chemins, retourne le premier qui fonctionne"""
-    for path in paths:
+def _try_resolve(*candidates: str):
+    """
+    Essaie plusieurs chemins d'import et retourne le premier qui marche.
+    """
+    last_err = None
+    for dotted in candidates:
         try:
-            return _resolve_symbol(path)
-        except Exception:
+            return _resolve(dotted)
+        except Exception as e:  # garde la trace mais continue à essayer
+            last_err = e
             continue
-    return None
+    if last_err:
+        raise last_err
+    raise ImportError("No candidates provided to _try_resolve()")
 
 
-def _safe_instantiate(cls: Any, config: Optional[Dict[str, Any]] = None) -> Any:
-    """Instancie une classe avec gestion d'erreurs robuste"""
-    if cls is None:
-        return None
-    
-    config = config or {}
-    stage_name = getattr(cls, '__name__', str(cls))
-    
-    try:
-        # Essaie avec la config
-        instance = cls(**config)
-        print(f"[ADAPTER] Created {stage_name} with config ✓")
-        return instance
-    except Exception:
-        try:
-            # Essaie sans config
-            instance = cls()
-            print(f"[ADAPTER] Created {stage_name} (no config) ✓")
-            return instance
-        except Exception as e:
-            print(f"[ADAPTER] Failed to create {stage_name}: {e}")
-            return None
-
-
-# ---------- API principale --------------------------------------------------
+# ---------------------------------------------------------------------------
+# API demandée par builder.py
 
 def get_pipeline_cls():
-    """Retourne la classe PipelineSimulator"""
-    return _resolve_symbol(f"{CORE_MOD}.pipeline.PipelineSimulator")
+    """Retourne la classe du pipeline core2 (simulateur)."""
+    # ex: core2.pipeline.PipelineSimulator
+    return _try_resolve("core2.pipeline:PipelineSimulator")
+
+
+def get_result_cls():
+    """
+    Retourne la classe Result utilisée par le pipeline core2 pour emballer
+    les retours de stage. On préfère rs3_contracts.api.Result si présent.
+    """
+    try:
+        return _resolve("rs3_contracts.api:Result")
+    except Exception:
+        # Fallback léger : petit shim compatible (bool -> (ok,msg))
+        class _Result(tuple):  # type: ignore
+            def __new__(cls, val):
+                if isinstance(val, tuple) and len(val) == 2:
+                    return super().__new__(cls, val)
+                return super().__new__(cls, (bool(val), ""))
+
+            @property
+            def ok(self) -> bool:
+                return bool(self[0])
+
+            @property
+            def msg(self) -> str:
+                return str(self[1])
+
+        return _Result
 
 
 def get_context_cls():
-    """Retourne la classe Context"""  
-    return _resolve_symbol(f"{CORE_MOD}.context.Context")
+    """Retourne la classe Context core2."""
+    return _try_resolve("core2.context:Context")
+
+
+def _instantiate(cls, cfg_section: Optional[Dict[str, Any]] = None):
+    """Instancie une classe avec une section de config si possible."""
+    cfg_section = cfg_section or {}
+    try:
+        return cls(**cfg_section)
+    except TypeError:
+        # Certains stages n’ont pas de kwargs
+        return cls()
 
 
 def build_default_stages(cfg: Dict[str, Any]) -> List[Any]:
-    """Construit le pipeline par défaut avec stages essentiels"""
-    print(f"[ADAPTER] Building default pipeline from {CORE_MOD}")
-    
-    stages = []
-    
-    # Stage definitions: (name, module, default_config)
-    stage_definitions = [
-        # 1. Planning & Routing (obligatoires)
-        ("LegsPlan", "legs_plan.LegsPlan", {}),
-        ("LegsRoute", "legs_route.LegsRoute", {
-            "profile": cfg.get("osrm", {}).get("profile", "driving")
-        }),
-        ("LegsStitch", "legs_stitch.LegsStitch", {}),
-        
-        # 2. Enrichissement 
-        ("RoadEnricher", "road_enricher.RoadEnricher", {}),
-        ("GeoSpikeFilter", "geo_spike_filter.GeoSpikeFilter", 
-         cfg.get("geo_spike_filter", {"vmax_kmh": 160.0, "hard_jump_m": 500.0})),
-        ("LegsRetimer", "legs_retimer.LegsRetimer", 
-         cfg.get("legs_retimer", {"default_kmh": 50, "min_dt": 0.05})),
-        
-        # 3. Stops & Smoothing
-        ("StopWaitInjector", "stopwait_injector.StopWaitInjector", 
-         cfg.get("stop_wait_injector", {"tail_wait_s": 0})),
-        ("StopSmoother", "stop_smoother.StopSmoother", 
-         cfg.get("stop_smoother", {
-             "v_in": 0.25, "t_in": 2.0, "v_out": 0.6, "t_out": 2.5, "lock_pos": False
-         })),
-        
-        # 4. IMU & Sensors
-        ("IMUProjector", "imu_projector.IMUProjector", cfg.get("imu_projector", {})),
-        ("NoiseInjector", "noise_injector.NoiseInjector", cfg.get("noise", {})),
-        
-        # 5. Sync & Validation (ordre important!)
-        ("SpeedSync", "speed_sync.SpeedSync", 
-         cfg.get("speed_sync", {"keep_start_zero": True, "head_window_s": 2.0})),
-        ("Validators", "validators.Validators", {}),
-        ("Exporter", "exporter.Exporter", {}),
-    ]
-    
-    # Optional lockers (try grouped first, then individual)
-    locker_definitions = [
-        ("InitialStopLocker", ["stop_lockers.InitialStopLocker", "initial_stop_locker.InitialStopLocker"]),
-        ("MidStopsLocker", ["stop_lockers.MidStopsLocker", "mid_stops_locker.MidStopsLocker"]),  
-        ("FinalStopLocker", ["stop_lockers.FinalStopLocker", "final_stop_locker.FinalStopLocker"]),
-    ]
-    
-    # Build main stages
-    for stage_name, module_path, stage_config in stage_definitions:
-        full_path = f"{CORE_MOD}.stages.{module_path}"
-        
-        try:
-            cls = _resolve_symbol(full_path)
-            instance = _safe_instantiate(cls, stage_config)
-            if instance is not None:
-                stages.append(instance)
-            else:
-                print(f"[ADAPTER] ⚠️  Skipped {stage_name} (instantiation failed)")
-                
-        except Exception as e:
-            if stage_name in ["LegsPlan", "LegsRoute", "LegsStitch", "Exporter"]:
-                print(f"[ADAPTER] ❌ CRITICAL: {stage_name} failed: {e}")
-                raise  # Ces stages sont critiques
-            else:
-                print(f"[ADAPTER] ⚠️  Optional stage {stage_name} failed: {e}")
-    
-    # Add optional lockers (insert after StopSmoother)
-    locker_stages = []
-    for locker_name, paths in locker_definitions:
-        full_paths = [f"{CORE_MOD}.stages.{p}" for p in paths]
-        cls = _safe_resolve(full_paths)
-        if cls:
-            instance = _safe_instantiate(cls)
-            if instance:
-                locker_stages.append(instance)
-    
-    # Insert lockers after StopSmoother
-    if locker_stages:
-        insert_pos = len(stages) - 3  # Before SpeedSync, Validators, Exporter
-        for i, stage in enumerate(stages):
-            if hasattr(stage, '__class__') and 'StopSmoother' in stage.__class__.__name__:
-                insert_pos = i + 1
-                break
-        
-        stages[insert_pos:insert_pos] = locker_stages
-        locker_names = [s.__class__.__name__ for s in locker_stages]
-        print(f"[ADAPTER] Inserted lockers: {' → '.join(locker_names)}")
-    
-    # Final pipeline summary
-    stage_names = []
-    for stage in stages:
-        if stage is not None:
-            name = getattr(stage, 'name', stage.__class__.__name__)
-            stage_names.append(name)
-    
-    print(f"[ADAPTER] Final pipeline: {' → '.join(stage_names)}")
-    print(f"[ADAPTER] Total stages: {len(stages)}")
-    
-    # Validation critique
-    critical_stages = ["LegsPlan", "LegsRoute", "LegsStitch", "Exporter"]
-    missing_critical = []
-    for critical in critical_stages:
-        if not any(critical in name for name in stage_names):
-            missing_critical.append(critical)
-    
-    if missing_critical:
-        raise RuntimeError(f"CRITICAL stages missing: {missing_critical}")
-    
+    """
+    Construit la pipeline "par défaut" de core2 (sans patchs plugin).
+    On instancie chaque stage avec sa section de config si elle existe
+    dans `cfg` (e.g. cfg["legs_plan"], cfg["speed_sync"], etc.).
+    """
+    stages: List[Any] = []
+
+    # Résolution des classes core2 avec fallback pour les rename de modules
+    LegsPlan        = _try_resolve("core2.stages.legs_plan:LegsPlan")
+    LegsRoute       = _try_resolve("core2.stages.legs_route:LegsRoute")
+    LegsStitch      = _try_resolve("core2.stages.legs_stitch:LegsStitch")
+    RoadEnricher    = _try_resolve("core2.stages.road_enricher:RoadEnricher")
+    GeoSpikeFilter  = _try_resolve("core2.stages.geo_spike_filter:GeoSpikeFilter")
+    LegsRetimer     = _try_resolve("core2.stages.legs_retimer:LegsRetimer")
+    StopWaitInjector= _try_resolve("core2.stages.stopwait_injector:StopWaitInjector")
+    StopSmoother    = _try_resolve("core2.stages.stop_smoother:StopSmoother")
+
+    # lockers : anciens chemins, puis nouveaux
+    InitialStopLocker = _try_resolve(
+        "core2.stages.stop_lockers:InitialStopLocker",
+        "core2.stages.initial_stop_locker:InitialStopLocker",
+    )
+    MidStopsLocker = _try_resolve(
+        "core2.stages.stop_lockers:MidStopsLocker",
+        "core2.stages.mid_stops_locker:MidStopsLocker",
+    )
+    FinalStopLocker = _try_resolve(
+        "core2.stages.stop_lockers:FinalStopLocker",
+        "core2.stages.final_stop_locker:FinalStopLocker",
+    )
+
+    IMUProjector    = _try_resolve(
+        "core2.stages.imu_projector:IMUProjector",
+        "core2.stages.imu_projector:IMUProjector",  # alias stable
+    )
+    NoiseInjector   = _try_resolve("core2.stages.noise_injector:NoiseInjector")
+    SpeedSync       = _try_resolve("core2.stages.speed_sync:SpeedSync")
+    Validators      = _try_resolve("core2.stages.validators:Validators")
+    Exporter        = _try_resolve("core2.stages.exporter:Exporter")
+
+    # Récupère la section de config si fournie
+    c = lambda key: (cfg.get(key) or {}) if isinstance(cfg.get(key), dict) else {}
+
+    # Ordre par défaut observé dans tes logs
+    stages.append(_instantiate(LegsPlan,         c("legs_plan")))
+    stages.append(_instantiate(LegsRoute,        c("legs_route")))
+    stages.append(_instantiate(LegsStitch,       c("legs_stitch")))
+    stages.append(_instantiate(RoadEnricher,     c("road_enricher")))
+    stages.append(_instantiate(GeoSpikeFilter,   c("geo_spike_filter")))
+    stages.append(_instantiate(LegsRetimer,      c("legs_retimer")))
+    stages.append(_instantiate(StopWaitInjector, c("stopwait_injector")))
+    stages.append(_instantiate(StopSmoother,     c("stop_smoother")))
+    stages.append(_instantiate(InitialStopLocker, c("initial_stop_locker")))
+    stages.append(_instantiate(MidStopsLocker,    c("mid_stops_locker")))
+    stages.append(_instantiate(FinalStopLocker,   c("final_stop_locker")))
+    stages.append(_instantiate(IMUProjector,     c("imu_projector")))
+    stages.append(_instantiate(NoiseInjector,    c("noise_injector")))
+    stages.append(_instantiate(SpeedSync,        c("speed_sync")))
+    stages.append(_instantiate(Validators,       c("validators")))
+    stages.append(_instantiate(Exporter,         c("exporter")))
+
     return stages
 
 
-def build_pipeline_and_context(cfg: Dict[str, Any]) -> tuple[Any, Any]:
-    """Fonction complète pour construire pipeline + contexte (utilisée par runner)"""
-    print(f"[ADAPTER] build_pipeline_and_context called")
-    
-    try:
-        # 1. Get classes
-        PipelineCls = get_pipeline_cls()
-        ContextCls = get_context_cls()
-        
-        # 2. Build stages
-        stages = build_default_stages(cfg)
-        
-        # 3. Create pipeline
-        pipeline = PipelineCls(stages)
-        
-        # 4. Create context
-        try:
-            ctx = ContextCls(cfg)
-        except Exception:
-            ctx = ContextCls()
-            
-        # 5. Inject config into context
-        try:
-            ctx.config = cfg
-        except Exception:
-            setattr(ctx, 'config', cfg)
-            
-        print(f"[ADAPTER] ✅ Successfully built pipeline with {len(stages)} stages")
-        return pipeline, ctx
-        
-    except Exception as e:
-        print(f"[ADAPTER] ❌ build_pipeline_and_context failed: {e}")
-        traceback.print_exc()
-        raise
+__all__ = [
+    "get_pipeline_cls",
+    "get_result_cls",
+    "get_context_cls",
+    "build_default_stages",
+]
