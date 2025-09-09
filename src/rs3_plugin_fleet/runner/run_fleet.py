@@ -3,450 +3,37 @@
 Runner Fleet — lance une simulation multi-profils à partir d'un YAML.
 
 - Normalise ctx.sim_start (UTC) TRÈS tôt → plus de dates 1970.
-- Injecte AltitudeStage si dispo (sinon fallback post-enrich).
+- Injecte AltitudeStage si dispo (sinon fallback post-enrich via FlexisExporter).
 - Maintient Exporter core + ajoute FlexisExporter (dernier).
-- Filets post-run : export_flexis() (si présent) + rapport Flexis HTML.
+- Filets post-run : export_flexis() + rapport Flexis HTML.
 - Coupage d'un éventuel arrêt terminal artificiel (close_tail_stop).
 """
 
 from __future__ import annotations
 
 import argparse
-import re
 from copy import deepcopy
 from typing import Any, Dict
 
 import pandas as pd
 import yaml
 
-# ---------- helpers simples ---------------------------------------------------
-def _slugify(s: str) -> str:
-    if not s:
-        return "default"
-    s = re.sub(r"[^0-9A-Za-z._-]+", "-", str(s).strip())
-    s = re.sub(r"-{2,}", "-", s).strip("-")
-    return s or "default"
+from rs3_plugin_fleet.utils.time_utils import (
+    ensure_export_defaults,
+    ensure_sim_start_on_ctx,
+)
+from rs3_plugin_fleet.pipeline.patches import (
+    patch_pipeline_for_flexis,
+    call_export_flexis_post,
+    call_flexis_report_post,
+)
 
-# ---------- Robust UTC timestamp parser --------------------------------------
-def _parse_ts_utc(ts: pd.Series) -> pd.Series:
-    """Parse une série hétérogène en datetimes UTC (epoch s/ms/ns, datetimes, strings)."""
-    if ts is None:
-        return pd.Series([], dtype="datetime64[ns, UTC]")
-    s = pd.to_numeric(ts, errors="coerce")
-    if s.notna().any():
-        mx = s.dropna().abs().max()
-        try:
-            if mx < 1e11:      # secondes
-                return pd.to_datetime(s, unit="s", utc=True, errors="coerce")
-            elif mx < 1e14:    # millisecondes
-                return pd.to_datetime(s, unit="ms", utc=True, errors="coerce")
-            else:              # nanosecondes
-                return pd.to_datetime(s, unit="ns", utc=True, errors="coerce")
-        except Exception:
-            pass
-    return pd.to_datetime(ts, utc=True, errors="coerce")
 
-# ---------- Flexis enricher (optionnel) --------------------------------------
-try:
-    from rs3_plugin_fleet.flexis import enricher as _flexis_enricher  # type: ignore
-except Exception:
-    _flexis_enricher = None  # type: ignore
-
-# ---------- Utils ------------------------------------------------------------
+# ---------- IO ---------------------------------------------------------------
 def _load_yaml(path: str) -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
-def _tz_aware_utc_from_config(cfg: Dict[str, Any]) -> pd.Timestamp:
-    start_at = (
-        cfg.get("start_at")
-        or cfg.get("simulation", {}).get("start_at")
-        or cfg.get("fleet", {}).get("start_at")
-    )
-    if start_at:
-        ts = pd.Timestamp(start_at)
-        if ts.tz is None:
-            ts = ts.tz_localize("Europe/Paris").tz_convert("UTC")
-        else:
-            ts = ts.tz_convert("UTC")
-        return ts
-    return pd.Timestamp.now(tz="UTC")
-
-def _print_pipeline(stages) -> None:
-    names = [getattr(s, "name", s.__class__.__name__) for s in stages]
-    print(f"[PIPELINE] Stages before final clamp: {' → '.join(names)}")
-
-def _stage_name(s) -> str:
-    return getattr(s, "name", getattr(s, "__class__", type("X", (), {})).__name__)
-
-# --- Helper: safely fetch DataFrame from context without pandas truthiness ---
-def _ctx_df(ctx):
-    """Safely fetch the DataFrame from context without triggering pandas truthiness."""
-    df = getattr(ctx, "df", None)
-    if df is None:
-        df = getattr(ctx, "data", None)
-    return df
-
-def _ensure_export_defaults(run_cfg: Dict[str, Any]) -> None:
-    """Garantit output/export/start_at pour éviter 1970 et assurer les sorties."""
-    # 1) output dir: on dérive d'abord du nom/client sinon fallback 'default'
-    base_name = (
-        run_cfg.get("output", {}).get("dir_name")
-        or run_cfg.get("name")
-        or run_cfg.get("client")
-        or "default"
-    )
-    explicit_dir = (
-        run_cfg.get("output", {}).get("dir")
-        or run_cfg.get("export", {}).get("dir")
-        or run_cfg.get("outdir")
-    )
-    out_dir = explicit_dir or f"data/simulations/{_slugify(base_name)}"
-    run_cfg.setdefault("output", {})
-    run_cfg["output"]["dir"] = out_dir
-
-    # 2) export defaults
-    exp = run_cfg.setdefault("export", {})
-    exp.setdefault("format", "parquet")
-    exp.setdefault("filename", "flexis.parquet")
-    exp.setdefault("events_filename", "events.jsonl")
-    exp.setdefault("close_tail_stop", True)
-    exp.setdefault("tail_window", 5)  # secondes
-
-    # 3) start_at si absent → 08:00 Europe/Paris aujourd'hui
-    if "start_at" not in run_cfg:
-        ts_local = pd.Timestamp(pd.Timestamp.now(tz="Europe/Paris").date())
-        run_cfg["start_at"] = ts_local.replace(hour=8, minute=0, second=0).strftime("%Y-%m-%d %H:%M")
-
-def _ensure_sim_start_on_ctx(ctx: Any, cfg: Dict[str, Any]) -> pd.Timestamp:
-    """Consolide ctx.sim_start → tz-aware UTC (utilisé par core et export Flexis)."""
-    sim_start = getattr(ctx, "sim_start", None)
-    if sim_start is None:
-        sim_start = _tz_aware_utc_from_config(cfg)
-        try:
-            setattr(ctx, "sim_start", sim_start)
-        except Exception:
-            pass
-    else:
-        ts = pd.Timestamp(sim_start)
-        ts = ts.tz_localize("UTC") if ts.tz is None else ts.tz_convert("UTC")
-        setattr(ctx, "sim_start", ts)
-        sim_start = ts
-    return sim_start
-
-def _ensure_relative_time_columns(df: pd.DataFrame, ctx: Any) -> pd.DataFrame:
-    """
-    Reconstruit t_ms/t_s si absents à partir de timestamp/time_utc/ts_ms + ctx.sim_start.
-    Clamp ±100 ans pour éviter OutOfBoundsTimedelta.
-    """
-    if df is None or len(df) == 0:
-        return df if df is not None else pd.DataFrame()
-    if ("t_ms" in df.columns) or ("t_s" in df.columns):
-        return df
-
-    sim_start = getattr(ctx, "sim_start", None) or pd.Timestamp.now(tz="UTC")
-    sim_start = pd.Timestamp(sim_start).tz_convert("UTC")
-    start_ms = int(sim_start.value // 1_000_000)
-
-    # ts_ms absolu → relatif
-    if "ts_ms" in df.columns:
-        ts_raw = pd.to_numeric(df["ts_ms"], errors="coerce")
-        if ts_raw.notna().any():
-            mx = ts_raw.dropna().abs().max()
-            if mx < 1e11:   # s
-                ts_ms = ts_raw * 1000.0
-            elif mx < 1e14: # ms
-                ts_ms = ts_raw
-            else:           # ns
-                ts_ms = ts_raw / 1e6
-            t_ms = ts_ms - start_ms
-            clip_win = int(100 * 365.25 * 24 * 3600 * 1000)
-            df2 = df.copy()
-            df2["t_ms"] = pd.to_numeric(t_ms, errors="coerce").fillna(0).clip(-clip_win, clip_win).astype("int64")
-            return df2
-
-    # sinon timestamp/time_utc
-    ts_abs = None
-    if "timestamp" in df.columns:
-        ts_abs = _parse_ts_utc(df["timestamp"])
-    elif "time_utc" in df.columns:
-        ts_abs = _parse_ts_utc(df["time_utc"])
-    if ts_abs is not None:
-        valid = ts_abs.notna()
-        ts_ms = pd.Series(0, index=df.index, dtype="int64")
-        if valid.any():
-            ts_ms.loc[valid] = (ts_abs[valid].astype("int64") // 1_000_000).astype("int64")
-        delta_ms = ts_ms - start_ms
-        clip_win = int(100 * 365.25 * 24 * 3600 * 1000)
-        df2 = df.copy()
-        df2["t_ms"] = pd.to_numeric(delta_ms, errors="coerce").fillna(0).clip(-clip_win, clip_win).astype("int64")
-        return df2
-
-    return df
-
-def _trim_tail_stop(df: pd.DataFrame, ctx: Any, run_cfg: Dict[str, Any]) -> pd.DataFrame:
-    """
-    Supprime un arrêt artificiel prolongé en fin de trace.
-    Utilise t_ms si dispo, sinon tente timestamp/time_utc.
-    """
-    if df is None or len(df) == 0:
-        return df if df is not None else pd.DataFrame()
-
-    export_cfg = (run_cfg.get("export") or {})
-    if not export_cfg.get("close_tail_stop", True):
-        return df
-    tail_s = int(export_cfg.get("tail_window", 5))
-
-    # temps relatif t_ms
-    tdf = _ensure_relative_time_columns(df, ctx)
-    if "t_ms" not in tdf.columns:
-        return df
-
-    # colonne vitesse
-    v = None
-    for c in ("speed_mps", "speed", "v"):
-        if c in tdf.columns:
-            v = pd.to_numeric(tdf[c], errors="coerce"); break
-    if v is None:
-        return df
-
-    # cherche la dernière séquence >= tail_s avec v ~ 0
-    t_ms = pd.to_numeric(tdf["t_ms"], errors="coerce").ffill().fillna(0).astype("int64")
-    is_stop = (v.fillna(0) < 0.05)
-    if not is_stop.any():
-        return df
-
-    last_t = int(t_ms.iloc[-1])
-    win_start = last_t - tail_s * 1000
-    tail_mask = (t_ms >= win_start)
-    if (is_stop & tail_mask).sum() >= 2:
-        before_tail = t_ms < win_start
-        if before_tail.any():
-            cut_idx = before_tail[before_tail].index[-1]
-            return tdf.loc[:cut_idx].copy()
-    return df
-
-# ---------- AltitudeStage injector -------------------------------------------
-def _ensure_altitude_stage(pipeline, run_cfg: Dict[str, Any]) -> None:
-    stages = getattr(pipeline, "stages", None)
-    if not isinstance(stages, list):
-        return
-    if any(_stage_name(s) == "AltitudeStage" for s in stages):
-        return
-    try:
-        from rs3_plugin_fleet.plugin_discovery import altitude_loader as _alt
-    except Exception:
-        return
-
-    stage = None
-    # AltitudeStage(config) si dispo…
-    StageCls = getattr(_alt, "AltitudeStage", None)
-    if StageCls:
-        try:
-            stage = StageCls(run_cfg.get("altitude", {}) or run_cfg.get("plugins", {}).get("altitude", {}) or {})
-        except Exception:
-            stage = None
-    # …sinon fabrique
-    if stage is None:
-        for factory_name in ("build_stage", "build_altitude_stage", "get_stage"):
-            fn = getattr(_alt, factory_name, None)
-            if callable(fn):
-                try:
-                    stage = fn(run_cfg)
-                    break
-                except Exception:
-                    stage = None
-    if stage is None:
-        return
-
-    def _find(name):
-        return next((i for i, s in enumerate(stages) if _stage_name(s) == name), None)
-    anchor = _find("NoiseInjector") or _find("RoadEnricher")
-    insert_pos = (anchor + 1) if anchor is not None else max(len(stages) - 1, 0)
-    stages.insert(insert_pos, stage)
-    print("[ADAPTER] Inserted AltitudeStage")
-
-class _StageRunnerShim:
-    """Adapte un exporter exposant process(df, ctx) à l'API pipeline run(ctx)."""
-    def __init__(self, inner):
-        self.inner = inner
-        self.name = getattr(inner, "name", "Exporter")
-    def run(self, ctx):
-        df = _ctx_df(ctx)
-        if df is None:
-            df = pd.DataFrame()
-        out = self.inner.process(df, ctx)
-        try:
-            setattr(ctx, "df", out)
-        except Exception:
-            pass
-        return True
-
-class _FlexisExportFromEnricher:
-    """Enrichit flexis_* + assure t_ms puis délègue à utils/flexis_export.Stage."""
-    name = "FlexisExporter"
-    def __init__(self, exporter_factory):
-        self._make_exporter = exporter_factory
-    def run(self, ctx):
-        cfg_all = getattr(ctx, "config", {}) or {}
-        _ensure_sim_start_on_ctx(ctx, cfg_all)
-
-        # enrichissement flexis_*
-        try:
-            if _flexis_enricher is not None:
-                EnrCls = getattr(_flexis_enricher, "FlexisEnricher", None)
-                if EnrCls is not None:
-                    enr = EnrCls(cfg_all.get("flexis", {}) or {})
-                    df = _ctx_df(ctx)
-                    if df is not None:
-                        new_df = enr.apply(df, context={"config": cfg_all})
-                        try:
-                            setattr(ctx, "df", new_df)
-                        except Exception:
-                            pass
-        except Exception as e:
-            print(f"[Flexis] Enricher apply failed (non-fatal): {e}")
-
-        # garantir t_ms
-        df2 = _ctx_df(ctx)
-        df2 = _ensure_relative_time_columns(df2, ctx)
-        try:
-            if "t_ms" in df2.columns:
-                df2["t_ms"] = pd.to_numeric(df2["t_ms"], errors="coerce").fillna(0).astype("int64")
-        except Exception:
-            pass
-        setattr(ctx, "df", df2)
-
-        # altitude fallback: si aucun AltitudeStage n'a tourné, tente un enrichissement direct
-        try:
-            from rs3_plugin_fleet.plugin_discovery import altitude_loader as _alt
-            df_alt = _ctx_df(ctx)
-            if df_alt is not None:
-                for fn_name in ("enrich_altitude", "add_altitude", "apply", "process", "enrich"):
-                    fn = getattr(_alt, fn_name, None)
-                    if callable(fn):
-                        try:
-                            new_alt_df = fn(df_alt, ctx) if fn.__code__.co_argcount >= 2 else fn(df_alt)
-                            if isinstance(new_alt_df, pd.DataFrame) and "altitude" in new_alt_df.columns:
-                                setattr(ctx, "df", new_alt_df)
-                                print("[ADAPTER] Altitude applied via altitude_loader fallback")
-                                break
-                        except Exception:
-                            continue
-        except Exception:
-            pass
-
-        # couper un éventuel arrêt terminal artificiel
-        try:
-            cfg_all = getattr(ctx, "config", {}) or {}
-            df2 = _ctx_df(ctx)
-            trimmed = _trim_tail_stop(df2, ctx, cfg_all)
-            if isinstance(trimmed, pd.DataFrame) and len(trimmed) > 0:
-                setattr(ctx, "df", trimmed)
-        except Exception:
-            pass
-
-        # export Flexis
-        exp = self._make_exporter()
-        if not hasattr(exp, "run") and hasattr(exp, "process"):
-            exp = _StageRunnerShim(exp)
-        _ = exp.run(ctx)
-        return True
-
-def _patch_pipeline_for_flexis(pipeline, run_cfg: Dict[str, Any]) -> None:
-    """
-    - Inject AltitudeStage si dispo
-    - Supprime FinalTailZero (pour enlever l'arrêt forcé)
-    - Conserve Exporter core + ajoute FlexisExporter juste après → et remet FlexisExporter en TOUT DERNIER
-    - Force SpeedSync avant IMUProjector & Exporter
-    """
-    stages = getattr(pipeline, "stages", None)
-    if not isinstance(stages, list):
-        return
-
-    _ensure_altitude_stage(pipeline, run_cfg)
-    stages[:] = [s for s in stages if _stage_name(s) != "FinalTailZero"]
-
-    def _exporter_factory():
-        try:
-            from rs3_plugin_fleet.utils.flexis_export import Stage as _FlexisExporterStage  # type: ignore
-            return _FlexisExporterStage()
-        except Exception:
-            class _Fallback:
-                name = "Exporter"
-                def process(self, df, ctx): return df
-                def run(self, ctx): return True
-            return _Fallback()
-
-    exp_idx = next((i for i, s in enumerate(stages) if _stage_name(s) == "Exporter"), None)
-    if not any(_stage_name(s) == "FlexisExporter" for s in stages):
-        inst = _FlexisExportFromEnricher(_exporter_factory)
-        if exp_idx is not None:
-            stages.insert(exp_idx + 1, inst)
-            print("[ADAPTER] Inserted FlexisExporter after core Exporter")
-        else:
-            stages.append(inst)
-            print("[ADAPTER] Appended FlexisExporter at pipeline end (no core Exporter found)")
-
-    def _move_before(name_a, name_b):
-        a = next((i for i, s in enumerate(stages) if _stage_name(s) == name_a), None)
-        b = next((i for i, s in enumerate(stages) if _stage_name(s) == name_b), None)
-        if a is not None and b is not None and a > b:
-            item = stages.pop(a)
-            b2 = next((i for i, s in enumerate(stages) if _stage_name(s) == name_b), None)
-            stages.insert(b2, item)
-    _move_before("SpeedSync", "IMUProjector")
-    _move_before("SpeedSync", "Exporter")
-
-    flex_idx = next((i for i, s in enumerate(stages) if _stage_name(s) == "FlexisExporter"), None)
-    if flex_idx is not None and flex_idx != len(stages) - 1:
-        stages.append(stages.pop(flex_idx))
-
-# ---------- Flexis HTML report post-run --------------------------------------
-def _call_flexis_report_post(ctx, cfg: Dict[str, Any]) -> None:
-    try:
-        from rs3_plugin_fleet.report import flexis_report as _fr
-    except Exception:
-        return
-    df = _ctx_df(ctx)
-    for fn_name in ("generate_report", "write_report", "build_report", "generate_html"):
-        fn = getattr(_fr, fn_name, None)
-        if callable(fn):
-            try:
-                fn(df, cfg); print("[Report] Flexis report generated via", fn_name); return
-            except TypeError:
-                try:
-                    fn(df); print("[Report] Flexis report generated via", fn_name); return
-                except Exception:
-                    continue
-    try:
-        ReportCls = getattr(_fr, "FlexisReport", None)
-        if ReportCls is not None:
-            rep = ReportCls(cfg)
-            if hasattr(rep, "run"): rep.run(df, cfg)
-            elif hasattr(rep, "process"): rep.process(df, cfg)
-            print("[Report] Flexis report generated via FlexisReport class")
-    except Exception:
-        return
-
-def _call_export_flexis_post(ctx, cfg: Dict[str, Any]) -> None:
-    if _flexis_enricher is None:
-        return
-    fn = getattr(_flexis_enricher, "export_flexis", None)
-    if not callable(fn):
-        return
-    df = _ctx_df(ctx)
-    try:
-        fn(df, ctx, cfg)
-    except TypeError:
-        try:
-            fn(df, cfg)
-        except TypeError:
-            try:
-                fn(df)
-            except TypeError:
-                fn()
-    print("[Flexis] export_flexis() invoked post-run")
 
 # ---------- Builder/adapter discovery ----------------------------------------
 def _get_builder():
@@ -475,6 +62,7 @@ def _get_builder():
         pass
     raise ImportError("Impossible d'importer build_pipeline_and_context.")
 
+
 # ---------- main --------------------------------------------------------------
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="RS3 Fleet Runner")
@@ -495,7 +83,12 @@ def main(argv=None) -> int:
         v_profile = vehicle.get("profile")
         prof = profiles.get(v_profile, {}) if v_profile else {}
         run.update(deepcopy(prof))
-        for k in ("osrm","speed_sync","road_enrich","geo_spike_filter","legs_retimer","stop_wait_injector","stop_smoother","validators","exporter","altitude","flexis","stages"):
+        # hériter de la racine si non défini par le profil
+        for k in (
+            "osrm","speed_sync","road_enrich","geo_spike_filter",
+            "legs_retimer","stop_wait_injector","stop_smoother",
+            "validators","exporter","altitude","flexis","stages"
+        ):
             if k in cfg_root and k not in run:
                 run[k] = deepcopy(cfg_root[k])
         run["vehicle_id"] = vehicle.get("id")
@@ -524,32 +117,19 @@ def main(argv=None) -> int:
         if name and prof: print(f"[RUN] {name} ← profil={prof}")
         elif name: print(f"[RUN] {name}")
 
-        _ensure_export_defaults(run_cfg)
+        # valeurs par défaut + sim_start TÔT pour éviter 1970
+        ensure_export_defaults(run_cfg)
         pipeline, ctx = build(run_cfg)
+        ensure_sim_start_on_ctx(ctx, run_cfg)
 
-        # sim_start LE PLUS TÔT POSSIBLE
-        _ensure_sim_start_on_ctx(ctx, run_cfg)
-
-        # Info altitude (affichage)
+        # Affichage param altitude (pour debug)
         alt = (run_cfg.get("altitude", {}) or run_cfg.get("plugins", {}).get("altitude", {}) or {})
         base_url = alt.get("base_url") or "http://localhost:5004"
         timeout = float(alt.get("timeout", 30.0))
         print(f"[ALT] Using base_url={base_url}, timeout={timeout:.1f}s")
 
-        try:
-            stages = getattr(pipeline, "stages", None) or []
-            _print_pipeline(stages)
-        except Exception:
-            pass
-
         # Patch pipeline (Exporter core + FlexisExporter, Altitude, ordre)
-        _patch_pipeline_for_flexis(pipeline, run_cfg)
-        try:
-            stages = getattr(pipeline, "stages", None) or []
-            print("[PIPELINE] Stages after flexis patch:")
-            _print_pipeline(stages)
-        except Exception:
-            pass
+        patch_pipeline_for_flexis(pipeline, run_cfg)
 
         # Run
         print("[RUN] Executing…")
@@ -557,13 +137,14 @@ def main(argv=None) -> int:
         else: _ = pipeline(ctx)  # type: ignore
         print("[RUN] Done.")
 
-        # post-run filets
-        try: _call_export_flexis_post(ctx, run_cfg)
+        # Post-run hooks (export flexis additionnel + rapport HTML)
+        try: call_export_flexis_post(ctx, run_cfg)
         except Exception as e: print(f"[Flexis] export_flexis post-run failed: {e}")
-        try: _call_flexis_report_post(ctx, run_cfg)
+        try: call_flexis_report_post(ctx, run_cfg)
         except Exception as e: print(f"[Flexis] flexis_report post-run failed: {e}")
 
     return exit_code
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
