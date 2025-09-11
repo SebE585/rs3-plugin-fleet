@@ -26,6 +26,17 @@ profiles:
       - { from: "11:00", to: "13:00", weather: rain_light }
       - { from: "13:00", to: "20:00", weather: dry }
 
+  # Profil dédié Le Havre pour isoler les sorties
+  parcels_70x2min_lh:
+    hz: 10
+    osrm: { profile: driving, base_url: "http://localhost:5003" }
+    stops_per_vehicle: 70
+    dwell_seconds: { mean: 120, jitter: 0.2 }
+    outdir: data/simulations/ccd_parcels_le_havre
+    speed_targets: { residential: 30, primary: 50, motorway: 110 }
+    traffic_profile: *traffic_profile
+    weather_timeline: *weather_timeline
+
   furniture_30x20min:   # (non utilisé pour ce run)
     hz: 10
     osrm: { profile: driving, base_url: "http://localhost:5003" }
@@ -103,6 +114,87 @@ vehicles:
       - { name: "ROU-005", lat: 49.4458, lon: 1.1210, service_s: 120 }
       - { name: "ROU-068", lat: 49.4406, lon: 1.1171, service_s: 120 }
       - { name: "ROU-019", lat: 49.4489, lon: 1.1101, service_s: 120 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-VL-02"
+    profile: parcels_70x2min_lh           # tournée Le Havre
+    stops:
+      # START depot — Romilly-sur-Andelle
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+
+      # Le Havre — ~70 livraisons
+      - { name: "HAV-001", lat: 49.5032, lon: 0.1031, service_s: 120 }
+      - { name: "HAV-002", lat: 49.5065, lon: 0.1104, service_s: 120 }
+      - { name: "HAV-003", lat: 49.4987, lon: 0.0958, service_s: 120 }
+      - { name: "HAV-004", lat: 49.4942, lon: 0.1159, service_s: 120 }
+      - { name: "HAV-005", lat: 49.5003, lon: 0.1271, service_s: 120 }
+      - { name: "HAV-006", lat: 49.5078, lon: 0.1216, service_s: 120 }
+      - { name: "HAV-007", lat: 49.5121, lon: 0.1122, service_s: 120 }
+      - { name: "HAV-008", lat: 49.5089, lon: 0.0984, service_s: 120 }
+      - { name: "HAV-009", lat: 49.5015, lon: 0.0869, service_s: 120 }
+      - { name: "HAV-010", lat: 49.4958, lon: 0.0807, service_s: 120 }
+      - { name: "HAV-011", lat: 49.4912, lon: 0.0923, service_s: 120 }
+      - { name: "HAV-012", lat: 49.4898, lon: 0.1066, service_s: 120 }
+      - { name: "HAV-013", lat: 49.4877, lon: 0.1202, service_s: 120 }
+      - { name: "HAV-014", lat: 49.4935, lon: 0.1324, service_s: 120 }
+      - { name: "HAV-015", lat: 49.5001, lon: 0.1408, service_s: 120 }
+      - { name: "HAV-016", lat: 49.5069, lon: 0.1479, service_s: 120 }
+      - { name: "HAV-017", lat: 49.5128, lon: 0.1387, service_s: 120 }
+      - { name: "HAV-018", lat: 49.5173, lon: 0.1266, service_s: 120 }
+      - { name: "HAV-019", lat: 49.5191, lon: 0.1115, service_s: 120 }
+      - { name: "HAV-020", lat: 49.5152, lon: 0.0988, service_s: 120 }
+      - { name: "HAV-021", lat: 49.5097, lon: 0.0870, service_s: 120 }
+      - { name: "HAV-022", lat: 49.5022, lon: 0.0779, service_s: 120 }
+      - { name: "HAV-023", lat: 49.4940, lon: 0.0706, service_s: 120 }
+      - { name: "HAV-024", lat: 49.4865, lon: 0.0785, service_s: 120 }
+      - { name: "HAV-025", lat: 49.4829, lon: 0.0915, service_s: 120 }
+      - { name: "HAV-026", lat: 49.4821, lon: 0.1069, service_s: 120 }
+      - { name: "HAV-027", lat: 49.4814, lon: 0.1217, service_s: 120 }
+      - { name: "HAV-028", lat: 49.4856, lon: 0.1344, service_s: 120 }
+      - { name: "HAV-029", lat: 49.4910, lon: 0.1457, service_s: 120 }
+      - { name: "HAV-030", lat: 49.4981, lon: 0.1520, service_s: 120 }
+      - { name: "HAV-031", lat: 49.5050, lon: 0.1569, service_s: 120 }
+      - { name: "HAV-032", lat: 49.5129, lon: 0.1540, service_s: 120 }
+      - { name: "HAV-033", lat: 49.5188, lon: 0.1445, service_s: 120 }
+      - { name: "HAV-034", lat: 49.5220, lon: 0.1311, service_s: 120 }
+      - { name: "HAV-035", lat: 49.5229, lon: 0.1154, service_s: 120 }
+      - { name: "HAV-036", lat: 49.5203, lon: 0.1004, service_s: 120 }
+      - { name: "HAV-037", lat: 49.5156, lon: 0.0882, service_s: 120 }
+      - { name: "HAV-038", lat: 49.5088, lon: 0.0786, service_s: 120 }
+      - { name: "HAV-039", lat: 49.5009, lon: 0.0712, service_s: 120 }
+      - { name: "HAV-040", lat: 49.4926, lon: 0.0658, service_s: 120 }
+      - { name: "HAV-041", lat: 49.4851, lon: 0.0719, service_s: 120 }
+      - { name: "HAV-042", lat: 49.4798, lon: 0.0838, service_s: 120 }
+      - { name: "HAV-043", lat: 49.4776, lon: 0.0979, service_s: 120 }
+      - { name: "HAV-044", lat: 49.4770, lon: 0.1131, service_s: 120 }
+      - { name: "HAV-045", lat: 49.4797, lon: 0.1276, service_s: 120 }
+      - { name: "HAV-046", lat: 49.4847, lon: 0.1395, service_s: 120 }
+      - { name: "HAV-047", lat: 49.4914, lon: 0.1494, service_s: 120 }
+      - { name: "HAV-048", lat: 49.4990, lon: 0.1568, service_s: 120 }
+      - { name: "HAV-049", lat: 49.5067, lon: 0.1615, service_s: 120 }
+      - { name: "HAV-050", lat: 49.5144, lon: 0.1602, service_s: 120 }
+      - { name: "HAV-051", lat: 49.5209, lon: 0.1530, service_s: 120 }
+      - { name: "HAV-052", lat: 49.5253, lon: 0.1410, service_s: 120 }
+      - { name: "HAV-053", lat: 49.5274, lon: 0.1267, service_s: 120 }
+      - { name: "HAV-054", lat: 49.5271, lon: 0.1116, service_s: 120 }
+      - { name: "HAV-055", lat: 49.5239, lon: 0.0979, service_s: 120 }
+      - { name: "HAV-056", lat: 49.5189, lon: 0.0865, service_s: 120 }
+      - { name: "HAV-057", lat: 49.5122, lon: 0.0771, service_s: 120 }
+      - { name: "HAV-058", lat: 49.5047, lon: 0.0704, service_s: 120 }
+      - { name: "HAV-059", lat: 49.4966, lon: 0.0654, service_s: 120 }
+      - { name: "HAV-060", lat: 49.4883, lon: 0.0638, service_s: 120 }
+      - { name: "HAV-061", lat: 49.4810, lon: 0.0701, service_s: 120 }
+      - { name: "HAV-062", lat: 49.4760, lon: 0.0815, service_s: 120 }
+      - { name: "HAV-063", lat: 49.4737, lon: 0.0952, service_s: 120 }
+      - { name: "HAV-064", lat: 49.4735, lon: 0.1106, service_s: 120 }
+      - { name: "HAV-065", lat: 49.4763, lon: 0.1254, service_s: 120 }
+      - { name: "HAV-066", lat: 49.4816, lon: 0.1372, service_s: 120 }
+      - { name: "HAV-067", lat: 49.4887, lon: 0.1478, service_s: 120 }
+      - { name: "HAV-068", lat: 49.4969, lon: 0.1565, service_s: 120 }
+      - { name: "HAV-069", lat: 49.5050, lon: 0.1620, service_s: 120 }
+      - { name: "HAV-070", lat: 49.5131, lon: 0.1623, service_s: 120 }
+
+      # END depot — retour Romilly-sur-Andelle
       - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
 
 road_enrich:
@@ -183,7 +275,7 @@ stages:
   - class: "rs3_plugin_fleet.utils.flexis_export:Stage"
     config:
       export:
-        dir: "data/simulations/ccd_parcels_rouen"
+        dir: "data/simulations/ccd_parcels_rouen"   # Note: si tu veux splitter par véhicule, patcher le code pour ajouter vehicle_id
         filename: "flexis_final"
         tail_window: 5
       formats:

@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import traceback
+import re
 from rs3_plugin_fleet.flexis.enricher import FlexisEnricher, _extract_schedules_from_ctx
 
 logger = logging.getLogger(__name__)
@@ -97,8 +98,31 @@ def _compute_abs_time(df: pd.DataFrame, sim_start_utc) -> pd.Series:
 def _trim_tail_idle(df: pd.DataFrame, tail_window_s: float = 5.0) -> pd.DataFrame:
     """
     Supprime la traîne terminale "à l'arrêt" (accroche carte/arrêt prolongé).
+    Fallback temps:
+      - t_ms si présent,
+      - sinon ts_ms (epoch ms) → relatif,
+      - sinon time_utc → relatif.
     """
-    if df is None or len(df) == 0 or "t_ms" not in df.columns:
+    if df is None or len(df) == 0:
+        return df
+
+    # Construire une base temps en millisecondes relative au début
+    t_ms = None
+    if "t_ms" in df.columns:
+        t_ms = pd.to_numeric(df["t_ms"], errors="coerce").ffill().fillna(0)
+    elif "ts_ms" in df.columns:
+        _ts = pd.to_numeric(df["ts_ms"], errors="coerce").ffill()
+        if len(_ts) == 0 or _ts.iloc[0] is np.nan:
+            return df
+        t_ms = (_ts - _ts.iloc[0]).clip(lower=0)
+    elif "time_utc" in df.columns:
+        _tu = pd.to_datetime(df["time_utc"], utc=True, errors="coerce")
+        _n = _tu.view("int64") // 1_000_000  # ns → ms
+        if len(_n) == 0 or pd.isna(_n.iloc[0]):
+            return df
+        t_ms = (_n - int(_n.iloc[0])).clip(lower=0)
+    else:
+        # Pas de base temps exploitable
         return df
 
     v = None
@@ -121,7 +145,6 @@ def _trim_tail_idle(df: pd.DataFrame, tail_window_s: float = 5.0) -> pd.DataFram
     else:
         return df
 
-    t_ms = pd.to_numeric(df["t_ms"], errors="coerce").ffill().fillna(0)
     tail_len_ms = t_ms.iloc[-1] - t_ms.loc[last_active_idx]
     if tail_len_ms > (tail_window_s * 1000.0):
         return df.loc[:last_active_idx]
@@ -181,6 +204,73 @@ def _resolve_run_name(ctx, default_filename: str) -> str:
 
     base = os.path.splitext(default_filename)[0] or "run"
     return base
+
+# ------------------------------------------------------------
+# Multi-véhicule helpers
+# ------------------------------------------------------------
+_SANITIZE_RE = re.compile(r"[^A-Za-z0-9._-]+")
+
+def _sanitize_segment(x: str) -> str:
+    """Sanitize a string so it is safe as a folder/file segment."""
+    if not isinstance(x, str):
+        x = str(x)
+    x = x.strip()
+    if not x:
+        return "vehicle"
+    x = _SANITIZE_RE.sub("-", x)
+    return x.strip("-._") or "vehicle"
+
+
+def _resolve_vehicle_id(ctx, df: pd.DataFrame | None = None) -> Optional[str]:
+    """
+    Tente de retrouver un identifiant véhicule depuis le contexte ou le dataframe.
+    Ordre d'essai :
+      - ctx.vehicle_id, ctx.vehicle.id, ctx.vehicle.name, ctx.vehicle
+      - ctx.config["vehicle_id"]
+      - première valeur non nulle dans df["vehicle_id"] (si dispo)
+    Retourne une chaîne nettoyée pour usage dans un dossier, ou None si introuvable.
+    """
+    # 1) Contexte direct
+    for attr in ("vehicle_id",):
+        v = getattr(ctx, attr, None)
+        if isinstance(v, (str, int)):  # accept simple scalar
+            v = str(v).strip()
+            if v:
+                return _sanitize_segment(v)
+
+    # 2) ctx.vehicle.*
+    veh = getattr(ctx, "vehicle", None)
+    if veh is not None:
+        for attr in ("id", "name"):
+            v = getattr(veh, attr, None)
+            if isinstance(v, (str, int)):
+                v = str(v).strip()
+                if v:
+                    return _sanitize_segment(v)
+        # veh peut être directement une chaîne
+        if isinstance(veh, str) and veh.strip():
+            return _sanitize_segment(veh)
+
+    # 3) ctx.config
+    cfg = getattr(ctx, "config", None)
+    if isinstance(cfg, dict):
+        v = cfg.get("vehicle_id") or (cfg.get("vehicle") or {}).get("id") or (cfg.get("vehicle") or {}).get("name")
+        if isinstance(v, (str, int)):
+            v = str(v).strip()
+            if v:
+                return _sanitize_segment(v)
+
+    # 4) Dataframe
+    if df is not None and isinstance(df, pd.DataFrame) and "vehicle_id" in df.columns:
+        try:
+            s = df["vehicle_id"].astype(str).str.strip()
+            cand = s[s != ""].iloc[0]
+            if isinstance(cand, str) and cand:
+                return _sanitize_segment(cand)
+        except Exception:
+            pass
+
+    return None
 
 # ------------------------------------------------------------
 # Helpers flexis fallback/merge
@@ -393,16 +483,28 @@ class Stage:
         df["ts_ms"] = (abs_time.astype("int64") // 1_000_000).astype("int64")
         df["timestamp"] = abs_time
 
+        # Synthétiser t_ms si absent (relatif au premier échantillon)
+        if "t_ms" not in df.columns or pd.to_numeric(df["t_ms"], errors="coerce").isna().all():
+            _ts0 = int(df["ts_ms"].iloc[0]) if len(df["ts_ms"]) else 0
+            df["t_ms"] = (pd.to_numeric(df["ts_ms"], errors="coerce") - _ts0).clip(lower=0)
+
         # 2) trim de la queue "à l'arrêt"
         df = _trim_tail_idle(df, self.cfg.tail_window_s)
 
         # 3) Écriture alignée avec le core/rapports
-        out_dir = _resolve_outdir(ctx, self.cfg.out_dir)
+        out_dir_str = _resolve_outdir(ctx, self.cfg.out_dir)
         run_name = _resolve_run_name(ctx, self.cfg.filename)
+
+        # Multi-véhicule : si un identifiant véhicule est disponible, écrire dans un sous-dossier
+        vid = _resolve_vehicle_id(ctx, df)
+        out_dir_path = Path(out_dir_str)
+        if vid:
+            out_dir_path = out_dir_path / vid
+        out_dir = out_dir_path
 
         # Évite le double suffixe si run_name termine déjà par '-flexis'
         out_basename = run_name if run_name.lower().endswith("-flexis") else f"{run_name}-flexis"
-        out_path = Path(out_dir) / f"{out_basename}.csv"
+        out_path = (out_dir if isinstance(out_dir, Path) else Path(out_dir)) / f"{out_basename}.csv"
         self.last_out_path = str(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
