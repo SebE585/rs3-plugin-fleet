@@ -1,159 +1,207 @@
-#
 # -*- coding: utf-8 -*-
 """
-Pipeline builder — assemble core pipeline + altitude plugin + fillers/finalizers.
-Ce module ne dépend pas directement de core2.* : il passe par l'adapter dynamique.
+Dynamic adapter for RS3 core2 — standalone (no import from pipeline.builder).
+Exposes the attributes expected by rs3_plugin_fleet.pipeline.builder:
+  - get_pipeline_cls()
+  - get_context_cls()
+  - get_result_cls()
+  - build_default_stages(cfg)
+  - build_pipeline_and_ctx(cfg, sim_cfg=None, config_path=None)
 """
 from __future__ import annotations
-from typing import Any, Dict, List, Tuple
-import os
+from typing import Any, Dict, List, Optional, Tuple
 import importlib
 
-from rs3_plugin_fleet.plugin_discovery.altitude_loader import load_altitude_enricher
-from rs3_plugin_fleet.utils.ctx_access import CtxAccessor
-from rs3_plugin_fleet.stages.flexis_features import FlexisFeaturesStage
+# ----------------------------
+# Minimal dynamic resolvers
+# ----------------------------
+def _resolve(dotted: str):
+    """
+    Import 'pkg.mod:Attr' or 'pkg.mod.Attr' and return the symbol.
+    """
+    if ":" in dotted:
+        mod_name, attr = dotted.split(":", 1)
+    else:
+        parts = dotted.split(".")
+        mod_name, attr = ".".join(parts[:-1]), parts[-1]
+    mod = importlib.import_module(mod_name)
+    return getattr(mod, attr)
 
-ADAPTER_MODULE = os.environ.get("RS3_IMPL_ADAPTER", "rs3_plugin_fleet.adapters.core2_adapter_dyn")
+def _try_resolve(*candidates: str):
+    last_err = None
+    for dotted in candidates:
+        try:
+            return _resolve(dotted)
+        except Exception as e:
+            last_err = e
+            continue
+    if last_err:
+        raise last_err
+    raise ImportError("No candidates provided to _try_resolve()")
 
-def _load_impl():
-    mod = importlib.import_module(ADAPTER_MODULE)
-    required = ["get_pipeline_cls", "get_result_cls", "get_context_cls", "build_default_stages"]
-    for attr in required:
-        if not hasattr(mod, attr):
-            raise ImportError(f"Adapter '{ADAPTER_MODULE}' invalide, attribut manquant: {attr}")
-    return mod
+# ----------------------------
+# Public API (used by adapter and builder)
+# ----------------------------
+def get_pipeline_cls():
+    """Return core2 pipeline simulator class."""
+    return _try_resolve("core2.pipeline:PipelineSimulator")
 
-_impl = _load_impl()
+def get_context_cls():
+    """Return core2 Context class."""
+    return _try_resolve("core2.context:Context")
 
-def _split_for_tail_insertion(stages: List[Any]) -> Tuple[List[Any], List[Any], List[Any]]:
-    head: List[Any] = []
-    validators: List[Any] = []
-    exporters: List[Any] = []
-
-    def _is_validator(obj: Any) -> bool:
-        if getattr(obj, "is_validator", False):
-            return True
-        n = type(obj).__name__.lower()
-        return any(k in n for k in ("validator","validate","check","sanity","consistency"))
-
-    def _is_exporter(obj: Any) -> bool:
-        if getattr(obj, "is_exporter", False):
-            return True
-        n = type(obj).__name__.lower()
-        return any(k in n for k in ("export","writer","report","dump","save"))
-
-    for s in stages:
-        if _is_validator(s):
-            validators.append(s)
-        elif _is_exporter(s):
-            exporters.append(s)
-        else:
-            head.append(s)
-    return head, validators, exporters
-
-def _maybe_altitude_stages(cfg: Dict[str, Any]) -> List[Any]:
-    alt_cfg = cfg.get("altitude", {}) or {}
-    enabled = bool(alt_cfg.get("enabled", True))
-    if not enabled:
-        return []
-
-    if not alt_cfg.get("base_url") and not alt_cfg.get("base"):
-        alt_cfg["base_url"] = os.environ.get("RS3_ALTITUDE_BASE", "http://localhost:5004")
-
-    alt_class = alt_cfg.get("class")
-    if isinstance(alt_class, str) and ":" in alt_class:
-        os.environ["RUNNER_ALTITUDE_CLASS"] = alt_class
-
-    if "timeout_s" in alt_cfg and "timeout" not in alt_cfg:
-        alt_cfg["timeout"] = alt_cfg["timeout_s"]
-    alt_cfg.setdefault("timeout", 30.0)
-    if "base" in alt_cfg and "base_url" not in alt_cfg:
-        alt_cfg["base_url"] = alt_cfg["base"]
-    _t = alt_cfg.get("timeout")
-    alt_cfg.setdefault("timeout_s", _t)
-    alt_cfg.setdefault("read_timeout", _t)
-    alt_cfg.setdefault("request_timeout", _t)
-    alt_cfg.setdefault("connect_timeout", _t)
-
-    print(f"[ALT] Using base_url={alt_cfg.get('base_url') or alt_cfg.get('base')}, timeout={alt_cfg.get('timeout')}s")
-
-    AltitudeEnricher = load_altitude_enricher()
-    if AltitudeEnricher is None:
-        print("[WARN] Plugin altitude indisponible — on continue sans.")
-        return []
+def get_result_cls():
+    """
+    Return the Result class used by the contracts layer if available,
+    otherwise provide a tiny compatible shim exposing .ok and .msg.
+    """
     try:
-        obj = AltitudeEnricher(**alt_cfg)
+        return _resolve("rs3_contracts.api:Result")
     except Exception:
-        obj = AltitudeEnricher()
-    if isinstance(obj, (list, tuple)):
-        return list(obj)
-    return [obj] if obj is not None else []
+        class _Result(tuple):  # type: ignore
+            def __new__(cls, val):
+                if isinstance(val, tuple) and len(val) == 2:
+                    return super().__new__(cls, val)
+                return super().__new__(cls, (bool(val), ""))
+            @property
+            def ok(self) -> bool:
+                return bool(self[0])
+            @property
+            def msg(self) -> str:
+                return str(self[1])
+        return _Result
 
-def build_pipeline(cfg: Dict[str, Any]):
-    Pipeline = _impl.get_pipeline_cls()
-    CoreResult = _impl.get_result_cls()
+# ----------------------------
+# Stage composition helpers
+# ----------------------------
+def _instantiate(cls, section: Optional[Dict[str, Any]] = None):
+    section = section or {}
+    try:
+        return cls(**section)
+    except TypeError:
+        return cls()
 
-    impl_stages = _impl.build_default_stages(cfg)
-    head, validators, exporters = _split_for_tail_insertion(impl_stages)
-
+def build_default_stages(cfg: Dict[str, Any]) -> List[Any]:
+    """
+    Build the default stage list observed in RS3 core2, instantiating each
+    with its config section if present in `cfg`.
+    """
     stages: List[Any] = []
-    stages += head
-    stages += _maybe_altitude_stages(cfg)         # plugin altitude
 
-    _tail_s = float(cfg.get("tail_zero_seconds", 8.0))
-    _hz = float(cfg.get("hz", 10.0))
+    LegsPlan         = _try_resolve("core2.stages.legs_plan:LegsPlan")
+    LegsRoute        = _try_resolve("core2.stages.legs_route:LegsRoute")
+    LegsStitch       = _try_resolve("core2.stages.legs_stitch:LegsStitch")
+    RoadEnricher     = _try_resolve("core2.stages.road_enricher:RoadEnricher")
+    GeoSpikeFilter   = _try_resolve("core2.stages.geo_spike_filter:GeoSpikeFilter")
+    LegsRetimer      = _try_resolve("core2.stages.legs_retimer:LegsRetimer")
+    StopWaitInjector = _try_resolve("core2.stages.stopwait_injector:StopWaitInjector")
+    StopSmoother     = _try_resolve("core2.stages.stop_smoother:StopSmoother")
 
-    stages.append(FlexisFeaturesStage(hz=_hz))
-    stages += validators
+    InitialStopLocker = _try_resolve(
+        "core2.stages.stop_lockers:InitialStopLocker",
+        "core2.stages.initial_stop_locker:InitialStopLocker",
+    )
+    MidStopsLocker = _try_resolve(
+        "core2.stages.stop_lockers:MidStopsLocker",
+        "core2.stages.mid_stops_locker:MidStopsLocker",
+    )
+    FinalStopLocker = _try_resolve(
+        "core2.stages.stop_lockers:FinalStopLocker",
+        "core2.stages.final_stop_locker:FinalStopLocker",
+    )
 
-    # --- Timestamp re-anchor: fix accidental epoch(1970) dates while preserving time-of-day
-    def _reanchor_ts(df, ctx):
-        if df is None or "timestamp" not in df.columns:
-            return df
-        ts = df["timestamp"]
-        try:
-            import pandas as pd  # local import to avoid hard dependency at import time
-            ts_dt = pd.to_datetime(ts, utc=True, errors="coerce")
-        except Exception:
-            return df
-        if ts_dt.isna().all():
-            return df
-        # if a majority of rows are in 1970, we re-anchor
-        year = ts_dt.dt.year
-        if (year == 1970).sum() < 0.8 * len(ts_dt):
-            return df
-        # choose anchor day
-        base = cfg.get("run_start_iso")
-        try:
-            base_dt = pd.to_datetime(base, utc=True) if base else pd.Timestamp.utcnow().normalize().tz_localize("UTC")
-        except Exception:
-            base_dt = pd.Timestamp.utcnow().normalize().tz_localize("UTC")
-        # keep time-of-day: (ts - midnight) + base_midnight
-        tod = (ts_dt - ts_dt.dt.normalize())
-        df["timestamp"] = base_dt + tod
-        return df
+    IMUProjector   = _try_resolve("core2.stages.imu_projector:IMUProjector")
+    NoiseInjector  = _try_resolve("core2.stages.noise_injector:NoiseInjector")
+    SpeedSync      = _try_resolve("core2.stages.speed_sync:SpeedSync")
+    Validators     = _try_resolve("core2.stages.validators:Validators")
+    Exporter       = _try_resolve("core2.stages.exporter:Exporter")
 
+    c = lambda key: (cfg.get(key) or {}) if isinstance(cfg.get(key), dict) else {}
+
+    stages.append(_instantiate(LegsPlan,          c("legs_plan")))
+    stages.append(_instantiate(LegsRoute,         c("legs_route")))
+    stages.append(_instantiate(LegsStitch,        c("legs_stitch")))
+    stages.append(_instantiate(RoadEnricher,      c("road_enricher")))
+    stages.append(_instantiate(GeoSpikeFilter,    c("geo_spike_filter")))
+    stages.append(_instantiate(LegsRetimer,       c("legs_retimer")))
+    stages.append(_instantiate(StopWaitInjector,  c("stopwait_injector")))
+    stages.append(_instantiate(StopSmoother,      c("stop_smoother")))
+    stages.append(_instantiate(InitialStopLocker, c("initial_stop_locker")))
+    stages.append(_instantiate(MidStopsLocker,    c("mid_stops_locker")))
+    stages.append(_instantiate(FinalStopLocker,   c("final_stop_locker")))
+    stages.append(_instantiate(IMUProjector,      c("imu_projector")))
+    stages.append(_instantiate(NoiseInjector,     c("noise_injector")))
+    stages.append(_instantiate(SpeedSync,         c("speed_sync")))
+    stages.append(_instantiate(Validators,        c("validators")))
+    stages.append(_instantiate(Exporter,          c("exporter")))
+    return stages
+
+# ----------------------------
+# High-level builder (standalone)
+# ----------------------------
+def build_pipeline_and_ctx(
+    cfg: Dict[str, Any],
+    sim_cfg: Optional[Dict[str, Any]] = None,
+    config_path: Optional[str] = None,
+) -> Tuple[Any, Any]:
+    """
+    Compose a runnable Pipeline + Context without importing rs3_plugin_fleet.pipeline.builder.
+    """
+    PipelineCls = get_pipeline_cls()
+    ContextCls  = get_context_cls()
+
+    base_cfg = sim_cfg if isinstance(sim_cfg, dict) else (cfg if isinstance(cfg, dict) else {})
+    stages = build_default_stages(base_cfg)
+
+    # Instantiate pipeline and inject stages
+    pipeline = None
     try:
-        stages.append(CtxAccessor(_reanchor_ts))
+        pipeline = PipelineCls(stages=stages)
     except Exception:
-        pass
+        try:
+            pipeline = PipelineCls(base_cfg)
+        except Exception:
+            pipeline = PipelineCls()
 
-    stages += exporters
+    if hasattr(pipeline, "set_stages") and callable(getattr(pipeline, "set_stages")):
+        try:
+            pipeline.set_stages(stages)
+        except Exception:
+            pass
+    elif hasattr(pipeline, "stages"):
+        try:
+            setattr(pipeline, "stages", stages)
+        except Exception:
+            pass
 
-    # ---- DEBUG: log assembled pipeline & warn if key core stages are missing
+    # Build context
     try:
-        _names = [type(s).__name__ for s in stages]
-        print("[PIPELINE] Stages before final clamp:", " → ".join(_names))
-        _must = {"SpeedSync", "RoadEnricher", "GeoSpikeFilter", "LegsRetimer", "ImuProjector", "Exporter"}
-        _missing = [n for n in _must if n not in _names]
-        if _missing:
-            print("[WARN] Missing expected core stages:", ", ".join(_missing),
-                  "— check adapter.build_default_stages(cfg) and YAML 'stages' usage.")
-    except Exception as _e:
-        print("[DEBUG] Unable to introspect stages:", _e)
-    # ---- /DEBUG
+        ctx = ContextCls(base_cfg)
+    except Exception:
+        try:
+            ctx = ContextCls()
+            if hasattr(ctx, "set_config"):
+                try:
+                    ctx.set_config(base_cfg)
+                except Exception:
+                    pass
+            else:
+                setattr(ctx, "config", base_cfg)
+        except Exception as e:
+            raise RuntimeError(f"[ADAPTER] Unable to instantiate Context: {e}") from e
 
-    # Remove FinalStopLocker to avoid artificial tail wait/lock at end of run
-    stages = [s for s in stages if type(s).__name__ != "FinalStopLocker"]
+    # Sanity checks
+    if not hasattr(pipeline, "run") or not callable(getattr(pipeline, "run", None)):
+        raise RuntimeError("[ADAPTER] Composed pipeline is not runnable (.run() missing)")
+    if not stages or any(isinstance(s, (str, dict)) for s in stages):
+        raise RuntimeError("[ADAPTER] Invalid stages after dynamic composition")
 
-    return Pipeline(stages)
+    return pipeline, ctx
+
+__all__ = [
+    "get_pipeline_cls",
+    "get_context_cls",
+    "get_result_cls",
+    "build_default_stages",
+    "build_pipeline_and_ctx",
+]

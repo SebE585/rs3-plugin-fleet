@@ -11,6 +11,7 @@ license = {file = "LICENSE"}
 authors = [{ name = "RoadSimulator3", email = "sebastien.edet@gmail.com" }]
 requires-python = ">=3.10"
 dependencies = [
+  "rs3-contracts>=0.1.0",
   "numpy>=1.24",
   "pandas>=2.2",
   "pyyaml>=6.0",

@@ -1,4 +1,13 @@
 client: Coin-Coin Delivery — Rouen demo (stops explicites)
+
+contracts:
+  symbols:
+    load_config:      "core.config_loader:load_config"
+    pipeline_builder: "core2.pipeline:build_pipeline"      # ← RS3 core2
+    pipeline_class:   "core2.pipeline:PipelineSimulator"   # ← fallback si pas de builder
+
+osrm: { profile: driving, base_url: "http://localhost:5003" }
+
 profiles:
   parcels_70x2min:
     hz: 10
@@ -7,12 +16,12 @@ profiles:
     dwell_seconds: { mean: 120, jitter: 0.2 }
     outdir: data/simulations/ccd_parcels_rouen
     speed_targets: { residential: 30, primary: 50, motorway: 110 }
-    traffic_profile:
+    traffic_profile: &traffic_profile
       - { from: "08:00", to: "09:30", level: heavy }
       - { from: "09:30", to: "16:30", level: moderate }
       - { from: "16:30", to: "18:30", level: heavy }
       - { from: "18:30", to: "23:00", level: free }
-    weather_timeline:
+    weather_timeline: &weather_timeline
       - { from: "08:00", to: "11:00", weather: dry }
       - { from: "11:00", to: "13:00", weather: rain_light }
       - { from: "13:00", to: "20:00", weather: dry }
@@ -94,7 +103,7 @@ vehicles:
       - { name: "ROU-005", lat: 49.4458, lon: 1.1210, service_s: 120 }
       - { name: "ROU-068", lat: 49.4406, lon: 1.1171, service_s: 120 }
       - { name: "ROU-019", lat: 49.4489, lon: 1.1101, service_s: 120 }
-      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
 
 road_enrich:
   stream_url_base: "http://localhost:5002/nearest_road_batch_stream"
@@ -109,10 +118,18 @@ road_enrich:
 speed_sync:
   keep_start_zero: true
   head_window_s: 2.0
+  lat_acc_max_mps2: 2.2
+  corner_speed_cap: true
+  v_min_mps: 0.3
 
 geo_spike_filter:
   vmax_kmh: 160.0
   hard_jump_m: 500.0
+  max_delta_heading_deg: 28
+  min_speed_mps: 0.5
+
+stop_smoother:
+  window_s: 2.0
 
 legs_retimer:
   speed_by_type:
@@ -130,27 +147,54 @@ legs_retimer:
   min_dt: 0.05
   hz: 10.0
 
-stages:
-  - SpeedSync
-  - RoadEnricher
-  - GeoSpikeFilter
-  - LegsRetimer
-  - StopWaitInjector
-  - StopSmoother
-  - InitialStopLocker
-  - MidStopsLocker
-  - FinalStopLocker
-  - IMUProjector
-  - NoiseInjector
-  - AltitudeStage
-  - FlexisFeaturesStage
-  - FinalTailZero
-  - Validators
-  - Exporter
-
-flexis:
+flexis: &flexis_cfg
   infra_probability_per_km: { residential: 0.05, primary: 0.01 }
   driver_events_rate_per_hour: { harsh_brake: 2.0, aggressive_accel: 2.0 }
+
+stages:
+  - { class: "core2.stages.legs_plan:LegsPlan" }
+  - { class: "core2.stages.legs_route:LegsRoute" }
+  - { class: "core2.stages.legs_stitch:LegsStitch" }
+  - { class: "core2.stages.road_enricher:RoadEnricher" }
+  - { class: "rs3_plugin_altitude_agpl.plugin:AltitudeStage" }   # altitude
+  - { class: "core2.stages.geo_spike_filter:GeoSpikeFilter" }
+  - { class: "core2.stages.legs_retimer:LegsRetimer" }
+  - { class: "core2.stages.stopwait_injector:StopWaitInjector" }
+  - { class: "core2.stages.stop_smoother:StopSmoother" }
+  - { class: "core2.stages.initial_stop_locker:InitialStopLocker" }
+  - { class: "core2.stages.mid_stops_locker:MidStopsLocker" }
+  - { class: "core2.stages.final_stop_locker:FinalStopLocker" }
+  - { class: "core2.stages.imu_projector:IMUProjector" }
+  - { class: "core2.stages.noise_injector:NoiseInjector" }
+  - { class: "core2.stages.speed_sync:SpeedSync" }
+  - { class: "core2.stages.validators:Validators" }
+
+  - class: "rs3_plugin_fleet.flexis.enricher:FlexisEnricher"
+    config:
+      traffic_profile: *traffic_profile
+      weather_timeline: *weather_timeline
+      infra_probability_per_km: { residential: 0.05, primary: 0.01 }
+      driver_events_rate_per_hour: { harsh_brake: 2.0, aggressive_accel: 2.0 }
+      population_density_mode: "osm_heuristic"
+      export_after_enrich: true
+      export_outdir: "data/simulations/default"
+      export_filename: "flexis_final.csv"
+  - class: "rs3_plugin_fleet.utils.flexis_export:Stage"
+    config:
+      export:
+        dir: "data/simulations/ccd_parcels_rouen"
+        filename: "flexis_final"
+        tail_window: 5
+      formats:
+        csv: true
+        parquet: false
+      report:
+        enabled: true
+        filename: "flexis_report.html"
+
+  - { class: "core2.stages.exporter:Exporter" }
+
+
 population_density_mode: "osm_heuristic"  # ou "raster:/path/grid.tif" / "none"
 
 exporter:
@@ -163,8 +207,12 @@ exporter:
     break_on_nan: true
     max_segment_gap_s: 1.0
 
+
 validators:
   cadence:
     expected_hz: 10.0
-    tolerance_ppm: 100000   # ±1,0 % (remettras 50 000 quand tout est propre)
+    tolerance_ppm: 10000   # ±1,0 %
     enabled: true
+  dynamics:
+    turn_radius_min_m: 10
+    lateral_consistency_tol: 0.2
