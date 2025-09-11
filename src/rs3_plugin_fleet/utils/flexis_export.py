@@ -3,9 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 import os
+import logging
 from pathlib import Path
 import numpy as np
 import pandas as pd
+import traceback
+from rs3_plugin_fleet.flexis.enricher import FlexisEnricher, _extract_schedules_from_ctx
+
+logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------
 # Helpers temps absolu/relatif
@@ -178,6 +183,177 @@ def _resolve_run_name(ctx, default_filename: str) -> str:
     return base
 
 # ------------------------------------------------------------
+# Helpers flexis fallback/merge
+# ------------------------------------------------------------
+
+def _is_blank_series(s: pd.Series) -> pd.Series:
+    if s is None:
+        return pd.Series([True] * 0)
+    so = s.astype(object)
+    st = so.where(~so.isna(), "").astype(str).str.strip().str.lower()
+    return st.isna() | (st == "") | (st == "unknown") | (st == "nan") | (st == "none")
+
+
+def _mostly_empty(df: pd.DataFrame, col: str, ratio: float = 0.98) -> bool:
+    if col not in df.columns:
+        return True
+    s = df[col]
+    if pd.api.types.is_numeric_dtype(s):
+        return s.isna().mean() >= ratio
+    return float(_is_blank_series(s).mean()) >= ratio
+
+
+def _merge_preferring_existing(existing: pd.Series, enriched: pd.Series, is_bool: bool = False) -> pd.Series:
+    if existing is None or len(existing) == 0:
+        return enriched
+    if pd.api.types.is_bool_dtype(existing) or is_bool:
+        ex = pd.to_numeric(existing, errors="coerce")
+        enr = pd.to_numeric(enriched, errors="coerce") if enriched is not None else None
+        out = ex.where(~ex.isna(), enr)
+        return out.fillna(False).astype(bool)
+    if pd.api.types.is_numeric_dtype(existing):
+        ex = pd.to_numeric(existing, errors="coerce")
+        if enriched is None:
+            return ex
+        enr = pd.to_numeric(enriched, errors="coerce")
+        return ex.fillna(enr)
+    ex = existing.astype(object)
+    ex_blank = _is_blank_series(ex)
+    if enriched is None:
+        return ex
+    enr = enriched.astype(object).where(~enriched.isna(), "").astype(str).str.strip()
+    out = ex.copy()
+    out.loc[ex_blank] = enr.loc[ex_blank]
+    return out
+
+
+def _ensure_flexis_columns(df: pd.DataFrame, ctx) -> pd.DataFrame:
+    """
+    Si des colonnes flexis_* manquent ou sont (presque) vides, on relance un enrich 
+    minimal en récupérant `traffic_profile`/`weather_timeline` depuis le contexte,
+    puis on fusionne en NE REMPLAÇANT QUE LES VIDES.
+
+    Tweaks:
+      - Ne considère plus `flexis_infra_event` comme motif de fallback si elle est quasi vide
+        (cette colonne est souvent vide par nature).
+      - Journalise colonne par colonne combien de valeurs ont été comblées.
+      - Si le fallback ne change rien, log silencieux (pas de message bruyant).
+    """
+    flexis_cols = [
+        "flexis_road_type",
+        "flexis_road_curve_radius_m",
+        "flexis_nav_event",
+        "flexis_weather",
+        "flexis_night",
+        "flexis_traffic_level",
+        "flexis_delivery_status",
+        "flexis_infra_event",
+        "flexis_driver_event",
+        "flexis_population_density_km2",
+    ]
+
+    # Colonnes qu'on NE DOIT PAS considérer comme motif de fallback si quasi vides
+    _non_critical_mostly_empty = {"flexis_infra_event"}
+
+    missing = [c for c in flexis_cols if c not in df.columns]
+
+    # Calcule les colonnes quasi vides mais exclut les non-critiques
+    mostly_empty_all = [c for c in flexis_cols if c in df.columns and _mostly_empty(df, c, ratio=0.98)]
+    mostly_empty = [c for c in mostly_empty_all if c not in _non_critical_mostly_empty]
+
+    if missing or mostly_empty:
+        any_change = False
+        per_col_filled = {}
+        try:
+            logger.debug(f"[FlexisExporter] Fallback check: missing={missing} mostly_empty={mostly_empty}")
+        except Exception:
+            pass
+
+        # État initial des colonnes pour le comptage des remplissages
+        before_map = {}
+        for col in flexis_cols:
+            if col in df.columns:
+                s = df[col]
+                if pd.api.types.is_object_dtype(s.dtype):
+                    before_map[col] = s.astype(object).where(~s.isna(), "").astype(str).str.strip()
+                else:
+                    before_map[col] = s
+
+        # Récupérer les plannings depuis le contexte (mêmes règles que l'enricher)
+        tp, wt = _extract_schedules_from_ctx(ctx)
+        fx = FlexisEnricher({
+            "traffic_profile": tp or [],
+            "weather_timeline": wt or [],
+            "export_after_enrich": False,
+        })
+        fx_df = fx.apply(df.copy(), context=ctx)
+
+        # Fusion non destructive + comptage des comblements
+        for col in flexis_cols:
+            if col in fx_df.columns:
+                is_bool = (col == "flexis_night")
+                if col in df.columns:
+                    before = before_map.get(col, df[col])
+                    new_series = _merge_preferring_existing(df[col], fx_df[col], is_bool=is_bool)
+                    df[col] = new_series
+
+                    # Comptage: nombre de cellules auparavant vides/comme inconnues et maintenant remplies
+                    filled_count = 0
+                    try:
+                        if pd.api.types.is_object_dtype(before.dtype):
+                            was_blank = before.astype(object).where(~before.isna(), "").astype(str).str.strip()
+                            now = new_series.astype(object).where(~new_series.isna(), "").astype(str).str.strip()
+                            filled_count = int(((was_blank == "") & (now != "")).sum())
+                        else:
+                            # numérique/bool: rempli si était NaN et devient non-NaN
+                            was_nan = pd.to_numeric(before, errors="coerce").isna()
+                            now_nan = pd.to_numeric(new_series, errors="coerce").isna()
+                            filled_count = int((was_nan & ~now_nan).sum())
+                    except Exception:
+                        filled_count = 0
+                    per_col_filled[col] = filled_count
+                    any_change = any_change or (filled_count > 0)
+                else:
+                    df[col] = fx_df[col]
+                    per_col_filled[col] = int(len(df[col]))  # colonne entièrement ajoutée
+                    any_change = True
+
+        # Normalisation finale
+        for col in ("flexis_road_type", "flexis_traffic_level", "flexis_weather", "flexis_delivery_status"):
+            if col in df.columns:
+                s = df[col].astype(object).where(~df[col].isna(), "").astype(str).str.strip()
+                s = s.replace({"nan": "", "None": ""})
+                df[col] = s.replace("", "unknown")
+
+        for col in ("flexis_nav_event", "flexis_infra_event", "flexis_driver_event"):
+            if col in df.columns:
+                df[col] = df[col].astype(object).where(~df[col].isna(), "").astype(str).str.strip()
+
+        if "flexis_population_density_km2" in df.columns:
+            df["flexis_population_density_km2"] = pd.to_numeric(df["flexis_population_density_km2"], errors="coerce").fillna(600.0)
+        if "flexis_road_curve_radius_m" in df.columns:
+            s = pd.to_numeric(df["flexis_road_curve_radius_m"], errors="coerce")
+            df["flexis_road_curve_radius_m"] = s.bfill().ffill().fillna(5000.0)
+
+        # Logging final: seulement si quelque chose a réellement été comblé/ajouté
+        if any_change:
+            try:
+                details = ", ".join([f"{k}:{v}" for k, v in per_col_filled.items() if v > 0]) or "no per-column deltas"
+                logger.debug(f"[FlexisExporter] Fallback enrich applied (filled cells → {details})")
+            except Exception:
+                pass
+        else:
+            # Silence si aucun changement (évite le bruit)
+            pass
+    else:
+        try:
+            logger.debug("[FlexisExporter] Fallback not needed: flexis_* columns already populated.")
+        except Exception:
+            pass
+
+    return df
+
+# ------------------------------------------------------------
 # Exporter
 # ------------------------------------------------------------
 @dataclass
@@ -238,6 +414,10 @@ class Stage:
         ]
 
         # Ensure a fixed canonical Flexis schema is present (create empty defaults when missing)
+
+        # 1bis) Enrichissement Flexis si colonnes manquantes ou vides (fallback non destructif)
+        df = _ensure_flexis_columns(df, ctx)
+
         required_flexis = [
             "flexis_road_type",
             "flexis_road_curve_radius_m",
@@ -304,6 +484,30 @@ class Stage:
                 cols_order.append(c)
 
         df_out = df[cols_order].copy()
+
+        # Preserve existing flexis_* from upstream stages; only fill blanks in df_out
+        for _col in [c for c in df.columns if isinstance(c, str) and c.startswith("flexis_")]:
+            try:
+                if _col not in df_out.columns:
+                    df_out[_col] = df[_col]
+                else:
+                    _s_out = df_out[_col].astype(object)
+                    _s_src = df[_col].astype(object)
+                    _mask_blank = _s_out.isna() | (_s_out.astype(str).str.strip() == "")
+                    _s_out.loc[_mask_blank] = _s_src.loc[_mask_blank]
+                    df_out[_col] = _s_out
+            except Exception:
+                pass
+
+        # DEBUG: preview just before writing
+        print("[DEBUG] Colonnes flexis_* juste avant écriture (post-merge):")
+        for _col in [c for c in df_out.columns if isinstance(c, str) and c.startswith("flexis_")]:
+            try:
+                _s = pd.Series(df_out[_col])
+                print(f"  {_col}: non_na={int(_s.notna().sum())}, unique={int(_s.nunique(dropna=True))}")
+                print(_s.head().to_string())
+            except Exception as __e:
+                print(f"  {_col}: preview failed: {__e}")
 
         # Normalize types for a few columns
         if "flexis_night" in df_out.columns:
@@ -373,3 +577,7 @@ class Stage:
 
         msg = f"Wrote {self.last_out_path}" if self.last_out_path else "flexis export written"
         return {"ok": True, "msg": msg}
+
+# Backward-compatibility alias
+class FlexisExporter(Stage):
+    pass

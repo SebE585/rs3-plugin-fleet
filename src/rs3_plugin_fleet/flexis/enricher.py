@@ -8,6 +8,9 @@ import pandas as pd
 from pandas.api.types import is_numeric_dtype, is_datetime64_any_dtype, is_datetime64tz_dtype
 from zoneinfo import ZoneInfo
 
+import logging
+logger = logging.getLogger(__name__)
+
 _DEF_PREFIX = "flexis_"
 
 def _to_camel_from_snake(snake: str) -> str:
@@ -52,7 +55,7 @@ def _upsert_series(df: pd.DataFrame, target_snake: str, values) -> None:
 
     # Debug verification
     try:
-        print(f"_upsert_series({target_snake}): non_na={df[target_snake].notna().sum()}, unique={df[target_snake].nunique(dropna=True)}")
+        logger.debug(f"_upsert_series({target_snake}): non_na={df[target_snake].notna().sum()}, unique={df[target_snake].nunique(dropna=True)}")
     except Exception:
         pass
 
@@ -381,25 +384,57 @@ def _delta_heading(h):
     return d
 
 def _radius_from_geometry(lat, lon):
+    """Compute smoothed radius of curvature (m). Ignores tiny steps and clamps to [0, 5000]."""
     if len(lat) < 3:
         return np.full_like(lat, np.nan, dtype=float)
-    brg = _bearing(lat[:-1], lon[:-1], lat[1:], lon[1:])
-    dhead = _delta_heading(brg)
+    # Haversine step length (m)
     R = 6371000.0
-    lat1 = np.radians(lat[:-1])
-    lat2 = np.radians(lat[1:])
-    dlat = np.radians(lat[1:] - lat[:-1])
-    dlon = np.radians(lon[1:] - lon[:-1])
-    a = np.sin(dlat / 2.0) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2.0) ** 2
+    latr = np.radians(lat)
+    lonr = np.radians(lon)
+    dlat = np.diff(latr, prepend=latr[0])
+    dlon = np.diff(lonr, prepend=lonr[0])
+    a = np.sin(dlat/2.0)**2 + np.cos(latr)*np.cos(np.roll(latr, 1)) * np.sin(dlon/2.0)**2
     step = 2 * R * np.arcsin(np.sqrt(a))
-    rad = np.full_like(lat, np.nan, dtype=float)
+    step[0] = step[1] if len(step) > 1 else 0.0
+
+    # Bearings and heading changes
+    brg = _bearing(lat[:-1], lon[:-1], lat[1:], lon[1:])
+    # simple smoothing on heading
+    if len(brg) >= 5:
+        k = np.ones(5) / 5.0
+        brg_sm = np.convolve(brg, k, mode='same')
+    else:
+        brg_sm = brg
+    dhead = _delta_heading(brg_sm)
+    dhead = np.concatenate([[dhead[0]], dhead])  # align size with lat
+
+    # Avoid division by tiny angles or tiny steps
     denom = np.radians(np.abs(dhead)) + 1e-9
-    rseg = np.clip(step / denom, 0, 5000.0)
-    rad[1:] = rseg
+    step_safe = np.clip(step, 0.5, None)  # ignore micro-jitter
+    rad = np.clip(step_safe / denom, 0, 5000.0)
+
+    # Fill edges
     if len(rad) > 2:
         rad[0] = rad[1]
         rad[-1] = rad[-2]
     return rad
+# --------- traffic fallback: infer from speed -----------
+def _traffic_from_speed(v_series: pd.Series) -> pd.Series:
+    """Infer traffic level from speed (m/s) using rolling median and quantiles.
+    Returns labels in {"free","moderate","heavy"}."""
+    if v_series is None or len(v_series) == 0:
+        return pd.Series(["unknown"] * 0, dtype=object)
+    v = pd.to_numeric(v_series, errors="coerce")
+    if v.isna().all():
+        return pd.Series(["unknown"] * len(v), index=v.index, dtype=object)
+    vr = v.rolling(101, min_periods=5, center=True).median()
+    # Quantile-based thresholds, robust to route profile
+    q30 = float(vr.quantile(0.30)) if not np.isnan(vr.quantile(0.30)) else 5.0
+    q70 = float(vr.quantile(0.70)) if not np.isnan(vr.quantile(0.70)) else 12.0
+    lvl = np.full(len(v), "moderate", dtype=object)
+    lvl[(vr <= max(q30, 3.0))] = "heavy"
+    lvl[(vr >= max(q70, 8.0))] = "free"
+    return pd.Series(lvl, index=v.index)
 
 def _osm_heuristic_density(road_type: pd.Series) -> pd.Series:
     table = {
@@ -435,7 +470,7 @@ class FlexisConfig:
 
 class FlexisEnricher:
     name = "flexis"
-    version = "0.6.0"
+    version = "0.7.0"
 
     def __init__(self, config: Dict[str, Any]):
         self.cfg = FlexisConfig(
@@ -459,7 +494,7 @@ class FlexisEnricher:
         if "timestamp" in df.columns:
             ts = df["timestamp"]
             if is_datetime64tz_dtype(ts):
-                dt = pd.to_datetime(ts, errors="coerce").tz_convert("UTC")
+                dt = pd.to_datetime(ts, errors="coerce", utc=True).dt.tz_convert("UTC")
                 return pd.DatetimeIndex(dt)
             if is_datetime64_any_dtype(ts):
                 dt = pd.to_datetime(ts, errors="coerce")
@@ -530,8 +565,8 @@ class FlexisEnricher:
         df = df.copy()
         ctx = context
         try:
-            print("FlexisEnricher: input columns:", list(df.columns))
-            print("FlexisEnricher: available road type columns:", [c for c in df.columns if ("road" in c.lower()) or ("highway" in c.lower()) or ("osm" in c.lower())])
+            logger.debug("FlexisEnricher: input columns: %s", list(df.columns))
+            logger.debug("FlexisEnricher: available road type columns: %s", [c for c in df.columns if ("road" in c.lower()) or ("highway" in c.lower()) or ("osm" in c.lower())])
         except Exception:
             pass
 
@@ -552,9 +587,9 @@ class FlexisEnricher:
         road_candidates = ["road_type", "osm_highway", "highway", "osm_road_type"]
         src_rt = _pick_best_non_empty(df, road_candidates)
         try:
-            print("FlexisEnricher: road_type source:", src_rt)
-            print("FlexisEnricher: traffic_profile (cfg):", self.cfg.traffic_profile)
-            print("FlexisEnricher: weather_timeline (cfg):", self.cfg.weather_timeline)
+            logger.debug("FlexisEnricher: road_type source: %s", src_rt)
+            logger.debug("FlexisEnricher: traffic_profile (cfg): %s", self.cfg.traffic_profile)
+            logger.debug("FlexisEnricher: weather_timeline (cfg): %s", self.cfg.weather_timeline)
         except Exception:
             pass
         if src_rt:
@@ -575,16 +610,33 @@ class FlexisEnricher:
         else:
             radius = pd.Series(np.nan, index=df.index)
         _upsert_series(df, "flexis_road_curve_radius_m", radius)
+        try:
+            is_curve = (pd.to_numeric(radius, errors="coerce") < 200).fillna(False)
+            _upsert_series(df, "flexis_is_curve", is_curve.astype(bool))
+        except Exception:
+            pass
 
         # nav events
         nav = self._nav_events(df)
         _upsert_series(df, "flexis_nav_event", nav)
 
-        # timeline absolu + minutes locales
+        # timeline absolu + minutes locales (robuste aux Series/Index)
         ts_abs = self._resolve_time(df, ctx)
-        df["timestamp"] = ts_abs
-        ts_local = ts_abs.tz_convert(ZoneInfo(self.cfg.timezone))
-        mins = pd.Series((ts_local.hour * 60 + ts_local.minute).astype(int), index=df.index)
+        try:
+            # Normalise en Series tz-aware alignée à df.index
+            if isinstance(ts_abs, pd.DatetimeIndex):
+                ts_series = pd.Series(ts_abs, index=df.index)
+                ts_local = ts_abs.tz_convert(ZoneInfo(self.cfg.timezone))
+            else:
+                ts_series = pd.to_datetime(ts_abs, errors="coerce", utc=True)
+                ts_local = ts_series.dt.tz_convert(ZoneInfo(self.cfg.timezone))
+            df["timestamp"] = ts_series
+            mins = pd.Series((ts_local.hour * 60 + ts_local.minute).astype(int), index=df.index)
+        except Exception as e:
+            logger.debug(f"FlexisEnricher: time normalization failed: {e}")
+            # Fallback: minutes linéaires 0..n basées sur cadence supposée 10 Hz
+            df["timestamp"] = pd.to_datetime(ts_abs, errors="coerce", utc=True)
+            mins = pd.Series((np.arange(len(df)) * 6) % (24*60), index=df.index)
 
         # profils trafic / météo : préférence à la config passée au stage, sinon ctx.config/cfg.profile
         cfg_tp = self.cfg.traffic_profile
@@ -602,8 +654,18 @@ class FlexisEnricher:
         night = _is_night_from_minutes(mins, night_bounds=(22 * 60, 6 * 60))
         _upsert_series(df, "flexis_night", night)
 
-        traffic = _label_from_schedule(mins, cfg_tp, key="level") if cfg_tp else pd.Series("", index=df.index)
+        # Traffic: prefer configured schedule; otherwise infer from speed
+        if cfg_tp:
+            traffic = _label_from_schedule(mins, cfg_tp, key="level")
+        else:
+            v_col = _pick_cols(df, ["speed_mps", "speed", "v", "v_mps"])
+            traffic = _traffic_from_speed(df[v_col]) if v_col else pd.Series(["unknown"] * len(df), index=df.index)
         _upsert_series(df, "flexis_traffic_level", traffic)
+        try:
+            if not cfg_tp:
+                logger.debug("Traffic fallback: inferred from speed distribution")
+        except Exception:
+            pass
 
         # autres features
         _upsert_series(df, "flexis_delivery_status", self._delivery_timeline(df, ctx))
@@ -658,7 +720,7 @@ class FlexisEnricher:
                 "flexis_population_density_km2",
                 "flexis_road_curve_radius_m",
             ]
-            print("FlexisEnricher summary:", {c: _summ(c) for c in summary_cols})
+            logger.debug("FlexisEnricher summary: %s", {c: _summ(c) for c in summary_cols})
         except Exception:
             pass
 
@@ -685,12 +747,58 @@ class FlexisEnricher:
         return pd.Series(events, index=df.index)
 
     def _delivery_timeline(self, df: pd.DataFrame, context: Any) -> pd.Series:
-        if "is_service" in df.columns:
-            sv = df["is_service"].astype(bool)
-            ev = np.array(["en_route"] * len(df), dtype=object)
-            ev[sv.values] = "delivery_in_progress"
-            return pd.Series(ev, index=df.index)
-        return pd.Series("en_route", index=df.index, dtype="object")
+        """Finite state machine for delivery status using speed and stop flags.
+        States: en_route -> arrival -> delivery_in_progress -> departure -> en_route
+        Heuristics:
+        - arrival when speed < 0.2 m/s (or flag_stop/flag_wait) for >= 5 seconds and we were en_route
+        - delivery_in_progress while stationary window persists beyond 20 seconds
+        - departure when speed recovers > 1.0 m/s after a stationary period
+        """
+        n = len(df)
+        if n == 0:
+            return pd.Series([], dtype=object)
+        v_col = _pick_cols(df, ["speed_mps", "speed", "v", "v_mps"]) or None
+        v = pd.to_numeric(df[v_col], errors="coerce") if v_col else pd.Series(np.nan, index=df.index)
+        stop_flags = (df.get("flag_stop", False).astype(bool)) | (df.get("flag_wait", False).astype(bool))
+
+        status = np.array(["en_route"] * n, dtype=object)
+        state = "en_route"
+        # assume ~10 Hz by default, but infer from timestamps if present
+        hz = 10.0
+        try:
+            ts = self._resolve_time(df, context)
+            if len(ts) >= 2:
+                dt = (ts[1:] - ts[:-1]).total_seconds()
+                med_dt = float(pd.Series(dt).median())
+                if med_dt > 0:
+                    hz = 1.0 / med_dt
+        except Exception:
+            pass
+        win5 = max(int(round(5 * hz)), 3)
+        win20 = max(int(round(20 * hz)), 6)
+
+        stationary = (v.fillna(0) < 0.2) | stop_flags
+        # durations (samples) spent stationary / moving
+        stat_count = pd.Series(stationary, index=df.index).rolling(win5, min_periods=1).sum()
+        long_stat = pd.Series(stationary, index=df.index).rolling(win20, min_periods=1).sum()
+
+        for i in range(n):
+            if state == "en_route":
+                if stat_count.iat[i] >= win5:  # 5s of stationary → arrival
+                    state = "arrival"
+            elif state == "arrival":
+                if long_stat.iat[i] >= win20:
+                    state = "delivery_in_progress"
+                elif not stationary.iat[i]:
+                    state = "en_route"  # false alarm
+            elif state == "delivery_in_progress":
+                if not stationary.iat[i] and (v.iat[i] if not np.isnan(v.iat[i]) else 0) > 1.0:
+                    state = "departure"
+            elif state == "departure":
+                if (v.iat[i] if not np.isnan(v.iat[i]) else 0) > 1.0 and not stationary.iat[i]:
+                    state = "en_route"
+            status[i] = state
+        return pd.Series(status, index=df.index, dtype="object")
 
     def _infra_events(self, df: pd.DataFrame) -> pd.Series:
         if "acc_z" in df.columns:
@@ -734,7 +842,7 @@ class FlexisEnricher:
             # Debug: list and summarize flexis_* columns before attaching to context
             try:
                 flexis_cols = [c for c in out.columns if str(c).startswith("flexis_")]
-                print("FlexisEnricher.run: flexis_cols in out:", flexis_cols)
+                logger.debug("FlexisEnricher.run: flexis_cols in out: %s", flexis_cols)
                 for col in flexis_cols:
                     try:
                         non_na = int(pd.Series(out[col]).notna().sum())
@@ -742,7 +850,7 @@ class FlexisEnricher:
                     except Exception:
                         non_na = "?"
                         unique = "?"
-                    print(f"  {col}: non_na={non_na}, unique={unique}")
+                    logger.debug(f"  {col}: non_na={non_na}, unique={unique}")
             except Exception:
                 pass
 
@@ -757,18 +865,18 @@ class FlexisEnricher:
                         for col in flexis_df.columns:
                             if flexis_df[col].dtype == "object":
                                 s = flexis_df[col].astype(str)
-                                s = s.replace("nan", "").replace("None", "").str.strip()
-                                # Set semantic defaults
-                                default = "unknown" if col not in ("flexis_nav_event", "flexis_infra_event", "flexis_driver_event") else ""
+                                s = s.replace({"nan": "", "None": ""}).str.strip()
+                                default = "unknown" if col not in ("flexis_nav_event", "flexis_infra_event", "flexis_driver_event") else "none"
                                 s = s.replace("", default)
-                                flexis_df[col] = s
+                                flexis_df[col] = s.astype("category")  # compact in-memory
                             else:
-                                # numeric columns
                                 if col == "flexis_population_density_km2":
                                     flexis_df[col] = pd.to_numeric(flexis_df[col], errors="coerce").fillna(600.0)
                                 elif col == "flexis_road_curve_radius_m":
                                     s = pd.to_numeric(flexis_df[col], errors="coerce")
                                     flexis_df[col] = s.bfill().ffill().fillna(5000.0)
+                                elif str(flexis_df[col].dtype).startswith("bool"):
+                                    flexis_df[col] = flexis_df[col].fillna(False).astype(bool)
                                 else:
                                     flexis_df[col] = pd.to_numeric(flexis_df[col], errors="coerce").fillna(0)
 
@@ -776,13 +884,13 @@ class FlexisEnricher:
                         filename = getattr(self.cfg, "export_filename", "flexis_final.csv")
                         os.makedirs(outdir, exist_ok=True)
                         filepath = os.path.join(outdir, filename)
-                        flexis_df.to_csv(filepath, index=False)
+                        flexis_df.to_csv(filepath, index=False, na_rep="")
 
-                        print(f"FlexisEnricher.run: exported {len(flexis_cols)} flexis_* columns to {filepath}")
+                        logger.debug(f"FlexisEnricher.run: exported {len(flexis_cols)} flexis_* columns to {filepath}")
                     else:
-                        print("FlexisEnricher.run: no flexis_* columns to export")
+                        logger.debug("FlexisEnricher.run: no flexis_* columns to export")
             except Exception as _e:
-                print(f"FlexisEnricher.run: export_after_enrich failed: {_e}")
+                logger.debug(f"FlexisEnricher.run: export_after_enrich failed: {_e}")
 
             # Attach to context
             setattr(ctx, "df", out)

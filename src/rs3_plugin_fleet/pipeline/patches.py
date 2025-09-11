@@ -80,13 +80,13 @@ def patch_pipeline_for_fleet(pipeline, ctx, *, with_altitude: bool, with_flexis_
     if with_flexis_export:
         if hasattr(pipeline, "set_exporter"):
             try:
-                pipeline.set_exporter("rs3_plugin_fleet.exporter.flexis_export:FlexisExporter")
+                pipeline.set_exporter("rs3_plugin_fleet.utils.flexis_export:FlexisExporter")
                 print("[PATCH] Exporter Flexis activé via set_exporter()")
             except Exception as e:
                 print(f"[WARN] set_exporter a échoué ({e}) — essai replace_stage.")
         if hasattr(pipeline, "replace_stage"):
             try:
-                from rs3_plugin_fleet.exporter.flexis_export import FlexisExporter
+                from rs3_plugin_fleet.utils.flexis_export import FlexisExporter
                 cfg = getattr(ctx, "config", None) or {}
                 pipeline.replace_stage("Exporter", FlexisExporter(cfg=cfg.get("exporter", {})))
                 print("[PATCH] Exporter remplacé par FlexisExporter via replace_stage()")
