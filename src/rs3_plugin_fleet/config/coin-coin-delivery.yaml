@@ -173,6 +173,7 @@ stages:
     config:
       traffic_profile: *traffic_profile
       weather_timeline: *weather_timeline
+      force_departure_after_wait: true
       infra_probability_per_km: { residential: 0.05, primary: 0.01 }
       driver_events_rate_per_hour: { harsh_brake: 2.0, aggressive_accel: 2.0 }
       population_density_mode: "osm_heuristic"
@@ -194,8 +195,6 @@ stages:
 
   - { class: "core2.stages.exporter:Exporter" }
 
-
-population_density_mode: "osm_heuristic"  # ou "raster:/path/grid.tif" / "none"
 
 exporter:
   report:
