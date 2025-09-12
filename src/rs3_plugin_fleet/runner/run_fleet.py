@@ -1,3 +1,14 @@
+# -*- coding: utf-8 -*-
+"""
+Lance une simulation (mono ou multi-véhicules) en s'appuyant par défaut sur
+le builder/context génériques core2_generic.py s'ils ne sont pas explicitement
+définis dans la config (cfg.contracts.symbols.*).
+
+Usage:
+  python -m rs3_plugin_fleet.runner.run_fleet \
+    --config path/to/fleet.yaml [--vehicle-id CCD-VL-01] [--list-vehicles]
+"""
+
 import argparse
 import logging
 import os
@@ -10,28 +21,50 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
+# ----------------------------
+# Chargement de la configuration
+# ----------------------------
 def load_config(config_path: str) -> Dict[str, Any]:
     """Charge la configuration YAML."""
-    with open(config_path, "r") as f:
-        return yaml.safe_load(f)
+    with open(config_path, "r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+
+    # Valeurs par défaut pour brancher core2_generic si rien n'est précisé
+    contracts = cfg.setdefault("contracts", {})
+    symbols = contracts.setdefault("symbols", {})
+    symbols.setdefault("pipeline_builder", "rs3_contracts.core2_generic:build_pipeline")
+    symbols.setdefault("context_builder", "rs3_contracts.core2_generic:build_context")
+
+    return cfg
 
 
+# ----------------------------
+# Pont vers l'adapter dynamique
+# ----------------------------
 def build_pipeline_and_ctx_dyn(config: Dict[str, Any], config_path: str) -> Tuple[Any, Any]:
-    """Construit le pipeline et le contexte via l'adapter dynamique."""
+    """
+    Construit le pipeline et le contexte via l'adapter dynamique.
+    L'adapter honorera cfg.contracts.symbols.pipeline_builder/context_builder
+    (par défaut: rs3_contracts.core2_generic).
+    """
     from rs3_plugin_fleet.adapters import core2_adapter_dyn as dyn
     return dyn.build_pipeline_and_ctx(cfg=config, sim_cfg=None, config_path=config_path)
 
 
-def run_pipeline(pipeline, ctx):
+def run_pipeline(pipeline, ctx) -> None:
     """Exécute le pipeline."""
     logger.info("Lancement du pipeline...")
     pipeline.run(ctx)
 
 
+# ----------------------------
+# Post-traitement des stages d'export pour séparer par véhicule
+# ----------------------------
 def _update_stage_export_dirs_for_vehicle(stages: List[Any], vehicle_id: str) -> None:
     """
     Si le YAML contient des stages d'export, on réécrit leurs dossiers de sortie afin
     de séparer proprement par véhicule. MODIFIE `stages` in-place.
+
     - rs3_plugin_fleet.utils.flexis_export:Stage => config.export.dir += /<vehicle_id>
     - rs3_plugin_fleet.flexis.enricher:FlexisEnricher (si export_after_enrich) => export_outdir += /<vehicle_id>
     """
@@ -59,13 +92,18 @@ def _update_stage_export_dirs_for_vehicle(stages: List[Any], vehicle_id: str) ->
                 cfg["export_outdir"] = os.path.join(outdir, vehicle_id)
 
 
+# ----------------------------
+# Préparation d'une vue "mono-véhicule"
+# ----------------------------
 def _prepare_single_vehicle_cfg(cfg: Dict[str, Any], vehicle: Dict[str, Any]) -> Dict[str, Any]:
     """
     Construit une configuration dérivée ne contenant qu'un seul véhicule.
-    Ajoute également un marquage `vehicle_id` à la racine pour que les stages puissent l'utiliser si besoin.
+    Ajoute également un marquage `vehicle_id` à la racine pour que les stages
+    puissent l'utiliser si besoin.
     """
     cfg_v = deepcopy(cfg)
-    # remplace la liste complète par uniquement ce véhicule
+
+    # Remplace la liste complète par uniquement ce véhicule
     cfg_v["vehicles"] = [vehicle]
 
     # Marqueur racine
@@ -86,6 +124,9 @@ def _run_once(cfg: Dict[str, Any], config_path: str) -> None:
     run_pipeline(pipeline, ctx)
 
 
+# ----------------------------
+# CLI
+# ----------------------------
 def main():
     parser = argparse.ArgumentParser(description="Lance une simulation de flotte.")
     parser.add_argument("--config", type=str, required=True, help="Chemin vers le fichier de configuration YAML.")
@@ -94,7 +135,6 @@ def main():
     args = parser.parse_args()
 
     cfg = load_config(args.config)
-
     vehicles = cfg.get("vehicles") or []
 
     # Option: list vehicles and exit
@@ -112,6 +152,7 @@ def main():
                     print(f" - {vid}")
         return
 
+    # Filtre éventuel sur un véhicule
     if args.vehicle_id is not None:
         filtered_vehicles = [v for v in vehicles if str(v.get("id")) == args.vehicle_id]
         if filtered_vehicles:
@@ -127,7 +168,7 @@ def main():
         _run_once(cfg, args.config)
         return
 
-    # Multi-véhicules: on boucle proprement
+    # Multi-véhicules: boucle
     for v in vehicles:
         veh_id = str(v.get("id", "vehicle"))
         logger.info(f"[RUN] vehicle={veh_id}")
