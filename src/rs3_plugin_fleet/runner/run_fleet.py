@@ -89,12 +89,40 @@ def _run_once(cfg: Dict[str, Any], config_path: str) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Lance une simulation de flotte.")
     parser.add_argument("--config", type=str, required=True, help="Chemin vers le fichier de configuration YAML.")
+    parser.add_argument("--vehicle-id", type=str, required=False, help="ID du véhicule à exécuter uniquement.")
+    parser.add_argument("--list-vehicles", action="store_true", help="Lister les IDs de véhicules disponibles et quitter.")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
 
-    # Cas simple: 0 ou 1 véhicule => exécution unique
     vehicles = cfg.get("vehicles") or []
+
+    # Option: list vehicles and exit
+    if args.list_vehicles:
+        if not vehicles:
+            print("No vehicles defined in configuration.")
+        else:
+            print("Available vehicles:")
+            for v in vehicles:
+                vid = str(v.get("id", "unnamed"))
+                label = v.get("label") or v.get("name") or ""
+                if label:
+                    print(f" - {vid}: {label}")
+                else:
+                    print(f" - {vid}")
+        return
+
+    if args.vehicle_id is not None:
+        filtered_vehicles = [v for v in vehicles if str(v.get("id")) == args.vehicle_id]
+        if filtered_vehicles:
+            vehicles = filtered_vehicles
+            cfg["vehicles"] = vehicles
+            cfg["vehicle_id"] = args.vehicle_id
+        else:
+            logger.warning(f"Vehicle ID '{args.vehicle_id}' not found in configuration vehicles.")
+            vehicles = []
+
+    # Cas simple: 0 ou 1 véhicule => exécution unique
     if len(vehicles) <= 1:
         _run_once(cfg, args.config)
         return

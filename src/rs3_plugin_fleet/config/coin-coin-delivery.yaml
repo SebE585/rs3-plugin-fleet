@@ -1,204 +1,3957 @@
-client: Coin-Coin Delivery — Rouen demo (stops explicites)
-
+client: Coin-Coin Delivery
 contracts:
   symbols:
-    load_config:      "core.config_loader:load_config"
-    pipeline_builder: "core2.pipeline:build_pipeline"      # ← RS3 core2
-    pipeline_class:   "core2.pipeline:PipelineSimulator"   # ← fallback si pas de builder
-
-osrm: { profile: driving, base_url: "http://localhost:5003" }
-
+    load_config: core.config_loader:load_config
+    pipeline_builder: core2.pipeline:build_pipeline
+    pipeline_class: core2.pipeline:PipelineSimulator
+osrm:
+  profile: driving
+  base_url: http://localhost:5003
 profiles:
   parcels_70x2min:
     hz: 10
-    osrm: { profile: driving, base_url: "http://localhost:5003" }
+    osrm:
+      profile: driving
+      base_url: http://localhost:5003
     stops_per_vehicle: 70
-    dwell_seconds: { mean: 120, jitter: 0.2 }
-    outdir: data/simulations/ccd_parcels_rouen
-    speed_targets: { residential: 30, primary: 50, motorway: 110 }
-    traffic_profile: &traffic_profile
-      - { from: "08:00", to: "09:30", level: heavy }
-      - { from: "09:30", to: "16:30", level: moderate }
-      - { from: "16:30", to: "18:30", level: heavy }
-      - { from: "18:30", to: "23:00", level: free }
-    weather_timeline: &weather_timeline
-      - { from: "08:00", to: "11:00", weather: dry }
-      - { from: "11:00", to: "13:00", weather: rain_light }
-      - { from: "13:00", to: "20:00", weather: dry }
-
-  # Profil dédié Le Havre pour isoler les sorties
-  parcels_70x2min_lh:
+    dwell_seconds:
+      mean: 120
+      jitter: 0.2
+    speed_targets:
+      residential: 30
+      primary: 50
+      motorway: 110
+    traffic_profile:
+    - from: 08:00
+      to: 09:30
+      level: heavy
+    - from: 09:30
+      to: '16:30'
+      level: moderate
+    - from: '16:30'
+      to: '18:30'
+      level: heavy
+    - from: '18:30'
+      to: '23:00'
+      level: free
+    weather_timeline:
+    - from: 08:00
+      to: '11:00'
+      weather: dry
+    - from: '11:00'
+      to: '13:00'
+      weather: rain_light
+    - from: '13:00'
+      to: '20:00'
+      weather: dry
+  furniture_sparse_1h:
     hz: 10
-    osrm: { profile: driving, base_url: "http://localhost:5003" }
-    stops_per_vehicle: 70
-    dwell_seconds: { mean: 120, jitter: 0.2 }
-    outdir: data/simulations/ccd_parcels_le_havre
-    speed_targets: { residential: 30, primary: 50, motorway: 110 }
-    traffic_profile: *traffic_profile
-    weather_timeline: *weather_timeline
-
-  furniture_30x20min:   # (non utilisé pour ce run)
-    hz: 10
-    osrm: { profile: driving, base_url: "http://localhost:5003" }
-    stops_per_vehicle: 30
-    dwell_seconds: { mean: 1200, jitter: 0.1 }
-
+    osrm:
+      profile: driving
+      base_url: http://localhost:5003
+    stops_per_vehicle: 10
+    dwell_seconds:
+      mean: 3600
+      jitter: 0.1
 vehicles:
-  - id: "CCD-VL-01"
-    profile: parcels_70x2min
-    stops:
-      # START depot — Romilly-sur-Andelle
-      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
-      - { name: "ROU-027", lat: 49.4430, lon: 1.1230, service_s: 120 }
-      - { name: "ROU-054", lat: 49.4429, lon: 1.1203, service_s: 120 }
-      - { name: "ROU-043", lat: 49.4434, lon: 1.1195, service_s: 120 }
-      - { name: "ROU-013", lat: 49.4420, lon: 1.1183, service_s: 120 }
-      - { name: "ROU-029", lat: 49.4418, lon: 1.1162, service_s: 120 }
-      - { name: "ROU-045", lat: 49.4410, lon: 1.1148, service_s: 120 }
-      - { name: "ROU-061", lat: 49.4412, lon: 1.1128, service_s: 120 }
-      - { name: "ROU-036", lat: 49.4413, lon: 1.1117, service_s: 120 }
-      - { name: "ROU-052", lat: 49.4408, lon: 1.1099, service_s: 120 }
-      - { name: "ROU-016", lat: 49.4411, lon: 1.1090, service_s: 120 }
-      - { name: "ROU-024", lat: 49.4402, lon: 1.1131, service_s: 120 }
-      - { name: "ROU-070", lat: 49.4425, lon: 1.1139, service_s: 120 }
-      - { name: "ROU-008", lat: 49.4432, lon: 1.1147, service_s: 120 }
-      - { name: "ROU-059", lat: 49.4431, lon: 1.1154, service_s: 120 }
-      - { name: "ROU-066", lat: 49.4481, lon: 1.1142, service_s: 120 }
-      - { name: "ROU-032", lat: 49.4470, lon: 1.1130, service_s: 120 }
-      - { name: "ROU-057", lat: 49.4464, lon: 1.1112, service_s: 120 }
-      - { name: "ROU-040", lat: 49.4440, lon: 1.1080, service_s: 120 }
-      - { name: "ROU-063", lat: 49.4441, lon: 1.1070, service_s: 120 }
-      - { name: "ROU-025", lat: 49.4474, lon: 1.1061, service_s: 120 }
-      - { name: "ROU-055", lat: 49.4486, lon: 1.1050, service_s: 120 }
-      - { name: "ROU-038", lat: 49.4426, lon: 1.1049, service_s: 120 }
-      - { name: "ROU-015", lat: 49.4469, lon: 1.1035, service_s: 120 }
-      - { name: "ROU-051", lat: 49.4436, lon: 1.1029, service_s: 120 }
-      - { name: "ROU-020", lat: 49.4437, lon: 1.1019, service_s: 120 }
-      - { name: "ROU-034", lat: 49.4465, lon: 1.1010, service_s: 120 }
-      - { name: "ROU-069", lat: 49.4457, lon: 1.1022, service_s: 120 }
-      - { name: "ROU-065", lat: 49.4423, lon: 1.1001, service_s: 120 }
-      - { name: "ROU-044", lat: 49.4472, lon: 1.0998, service_s: 120 }
-      - { name: "ROU-028", lat: 49.4456, lon: 1.0990, service_s: 120 }
-      - { name: "ROU-049", lat: 49.4422, lon: 1.0988, service_s: 120 }
-      - { name: "ROU-031", lat: 49.4409, lon: 1.0977, service_s: 120 }
-      - { name: "ROU-060", lat: 49.4475, lon: 1.0970, service_s: 120 }
-      - { name: "ROU-009", lat: 49.4480, lon: 1.0971, service_s: 120 }
-      - { name: "ROU-056", lat: 49.4416, lon: 1.0961, service_s: 120 }
-      - { name: "ROU-067", lat: 49.4438, lon: 1.0950, service_s: 120 }
-      - { name: "ROU-022", lat: 49.4485, lon: 1.0952, service_s: 120 }
-      - { name: "ROU-042", lat: 49.4467, lon: 1.0940, service_s: 120 }
-      - { name: "ROU-053", lat: 49.4459, lon: 1.0930, service_s: 120 }
-      - { name: "ROU-064", lat: 49.4468, lon: 1.0921, service_s: 120 }
-      - { name: "ROU-037", lat: 49.4479, lon: 1.0910, service_s: 120 }
-      - { name: "ROU-048", lat: 49.4461, lon: 1.0901, service_s: 120 }
-      - { name: "ROU-011", lat: 49.4451, lon: 1.0906, service_s: 120 }
-      - { name: "ROU-058", lat: 49.4447, lon: 1.0899, service_s: 120 }
-      - { name: "ROU-033", lat: 49.4439, lon: 1.0891, service_s: 120 }
-      - { name: "ROU-041", lat: 49.4404, lon: 1.0877, service_s: 120 }
-      - { name: "ROU-046", lat: 49.4453, lon: 1.0869, service_s: 120 }
-      - { name: "ROU-021", lat: 49.4424, lon: 1.0862, service_s: 120 }
-      - { name: "ROU-014", lat: 49.4442, lon: 1.0849, service_s: 120 }
-      - { name: "ROU-030", lat: 49.4482, lon: 1.0839, service_s: 120 }
-      - { name: "ROU-003", lat: 49.4471, lon: 1.0882, service_s: 120 }
-      - { name: "ROU-062", lat: 49.4455, lon: 1.0844, service_s: 120 }
-      - { name: "ROU-010", lat: 49.4407, lon: 1.1041, service_s: 120 }
-      - { name: "ROU-006", lat: 49.4415, lon: 1.1008, service_s: 120 }
-      - { name: "ROU-001", lat: 49.4428, lon: 1.0955, service_s: 120 }
-      - { name: "ROU-047", lat: 49.4444, lon: 1.1125, service_s: 120 }
-      - { name: "ROU-032", lat: 49.4470, lon: 1.1130, service_s: 120 }
-      - { name: "ROU-012", lat: 49.4476, lon: 1.1159, service_s: 120 }
-      - { name: "ROU-050", lat: 49.4477, lon: 1.1161, service_s: 120 }
-      - { name: "ROU-039", lat: 49.4488, lon: 1.1175, service_s: 120 }
-      - { name: "ROU-023", lat: 49.4460, lon: 1.1188, service_s: 120 }
-      - { name: "ROU-035", lat: 49.4450, lon: 1.1169, service_s: 120 }
-      - { name: "ROU-005", lat: 49.4458, lon: 1.1210, service_s: 120 }
-      - { name: "ROU-068", lat: 49.4406, lon: 1.1171, service_s: 120 }
-      - { name: "ROU-019", lat: 49.4489, lon: 1.1101, service_s: 120 }
-      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
-
-  - id: "CCD-VL-02"
-    profile: parcels_70x2min_lh           # tournée Le Havre
-    stops:
-      # START depot — Romilly-sur-Andelle
-      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
-
-      # Le Havre — ~70 livraisons
-      - { name: "HAV-001", lat: 49.5032, lon: 0.1031, service_s: 120 }
-      - { name: "HAV-002", lat: 49.5065, lon: 0.1104, service_s: 120 }
-      - { name: "HAV-003", lat: 49.4987, lon: 0.0958, service_s: 120 }
-      - { name: "HAV-004", lat: 49.4942, lon: 0.1159, service_s: 120 }
-      - { name: "HAV-005", lat: 49.5003, lon: 0.1271, service_s: 120 }
-      - { name: "HAV-006", lat: 49.5078, lon: 0.1216, service_s: 120 }
-      - { name: "HAV-007", lat: 49.5121, lon: 0.1122, service_s: 120 }
-      - { name: "HAV-008", lat: 49.5089, lon: 0.0984, service_s: 120 }
-      - { name: "HAV-009", lat: 49.5015, lon: 0.0869, service_s: 120 }
-      - { name: "HAV-010", lat: 49.4958, lon: 0.0807, service_s: 120 }
-      - { name: "HAV-011", lat: 49.4912, lon: 0.0923, service_s: 120 }
-      - { name: "HAV-012", lat: 49.4898, lon: 0.1066, service_s: 120 }
-      - { name: "HAV-013", lat: 49.4877, lon: 0.1202, service_s: 120 }
-      - { name: "HAV-014", lat: 49.4935, lon: 0.1324, service_s: 120 }
-      - { name: "HAV-015", lat: 49.5001, lon: 0.1408, service_s: 120 }
-      - { name: "HAV-016", lat: 49.5069, lon: 0.1479, service_s: 120 }
-      - { name: "HAV-017", lat: 49.5128, lon: 0.1387, service_s: 120 }
-      - { name: "HAV-018", lat: 49.5173, lon: 0.1266, service_s: 120 }
-      - { name: "HAV-019", lat: 49.5191, lon: 0.1115, service_s: 120 }
-      - { name: "HAV-020", lat: 49.5152, lon: 0.0988, service_s: 120 }
-      - { name: "HAV-021", lat: 49.5097, lon: 0.0870, service_s: 120 }
-      - { name: "HAV-022", lat: 49.5022, lon: 0.0779, service_s: 120 }
-      - { name: "HAV-023", lat: 49.4940, lon: 0.0706, service_s: 120 }
-      - { name: "HAV-024", lat: 49.4865, lon: 0.0785, service_s: 120 }
-      - { name: "HAV-025", lat: 49.4829, lon: 0.0915, service_s: 120 }
-      - { name: "HAV-026", lat: 49.4821, lon: 0.1069, service_s: 120 }
-      - { name: "HAV-027", lat: 49.4814, lon: 0.1217, service_s: 120 }
-      - { name: "HAV-028", lat: 49.4856, lon: 0.1344, service_s: 120 }
-      - { name: "HAV-029", lat: 49.4910, lon: 0.1457, service_s: 120 }
-      - { name: "HAV-030", lat: 49.4981, lon: 0.1520, service_s: 120 }
-      - { name: "HAV-031", lat: 49.5050, lon: 0.1569, service_s: 120 }
-      - { name: "HAV-032", lat: 49.5129, lon: 0.1540, service_s: 120 }
-      - { name: "HAV-033", lat: 49.5188, lon: 0.1445, service_s: 120 }
-      - { name: "HAV-034", lat: 49.5220, lon: 0.1311, service_s: 120 }
-      - { name: "HAV-035", lat: 49.5229, lon: 0.1154, service_s: 120 }
-      - { name: "HAV-036", lat: 49.5203, lon: 0.1004, service_s: 120 }
-      - { name: "HAV-037", lat: 49.5156, lon: 0.0882, service_s: 120 }
-      - { name: "HAV-038", lat: 49.5088, lon: 0.0786, service_s: 120 }
-      - { name: "HAV-039", lat: 49.5009, lon: 0.0712, service_s: 120 }
-      - { name: "HAV-040", lat: 49.4926, lon: 0.0658, service_s: 120 }
-      - { name: "HAV-041", lat: 49.4851, lon: 0.0719, service_s: 120 }
-      - { name: "HAV-042", lat: 49.4798, lon: 0.0838, service_s: 120 }
-      - { name: "HAV-043", lat: 49.4776, lon: 0.0979, service_s: 120 }
-      - { name: "HAV-044", lat: 49.4770, lon: 0.1131, service_s: 120 }
-      - { name: "HAV-045", lat: 49.4797, lon: 0.1276, service_s: 120 }
-      - { name: "HAV-046", lat: 49.4847, lon: 0.1395, service_s: 120 }
-      - { name: "HAV-047", lat: 49.4914, lon: 0.1494, service_s: 120 }
-      - { name: "HAV-048", lat: 49.4990, lon: 0.1568, service_s: 120 }
-      - { name: "HAV-049", lat: 49.5067, lon: 0.1615, service_s: 120 }
-      - { name: "HAV-050", lat: 49.5144, lon: 0.1602, service_s: 120 }
-      - { name: "HAV-051", lat: 49.5209, lon: 0.1530, service_s: 120 }
-      - { name: "HAV-052", lat: 49.5253, lon: 0.1410, service_s: 120 }
-      - { name: "HAV-053", lat: 49.5274, lon: 0.1267, service_s: 120 }
-      - { name: "HAV-054", lat: 49.5271, lon: 0.1116, service_s: 120 }
-      - { name: "HAV-055", lat: 49.5239, lon: 0.0979, service_s: 120 }
-      - { name: "HAV-056", lat: 49.5189, lon: 0.0865, service_s: 120 }
-      - { name: "HAV-057", lat: 49.5122, lon: 0.0771, service_s: 120 }
-      - { name: "HAV-058", lat: 49.5047, lon: 0.0704, service_s: 120 }
-      - { name: "HAV-059", lat: 49.4966, lon: 0.0654, service_s: 120 }
-      - { name: "HAV-060", lat: 49.4883, lon: 0.0638, service_s: 120 }
-      - { name: "HAV-061", lat: 49.4810, lon: 0.0701, service_s: 120 }
-      - { name: "HAV-062", lat: 49.4760, lon: 0.0815, service_s: 120 }
-      - { name: "HAV-063", lat: 49.4737, lon: 0.0952, service_s: 120 }
-      - { name: "HAV-064", lat: 49.4735, lon: 0.1106, service_s: 120 }
-      - { name: "HAV-065", lat: 49.4763, lon: 0.1254, service_s: 120 }
-      - { name: "HAV-066", lat: 49.4816, lon: 0.1372, service_s: 120 }
-      - { name: "HAV-067", lat: 49.4887, lon: 0.1478, service_s: 120 }
-      - { name: "HAV-068", lat: 49.4969, lon: 0.1565, service_s: 120 }
-      - { name: "HAV-069", lat: 49.5050, lon: 0.1620, service_s: 120 }
-      - { name: "HAV-070", lat: 49.5131, lon: 0.1623, service_s: 120 }
-
-      # END depot — retour Romilly-sur-Andelle
-      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
-
+- id: CCD-VL-01
+  profile: parcels_70x2min
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: ROUEN-001
+    lat: 49.471534
+    lon: 1.100704
+    service_s: 120
+  - name: ROUEN-002
+    lat: 49.450509
+    lon: 1.114478
+    service_s: 120
+  - name: ROUEN-003
+    lat: 49.435105
+    lon: 1.057337
+    service_s: 120
+  - name: ROUEN-004
+    lat: 49.448136
+    lon: 1.137567
+    service_s: 120
+  - name: ROUEN-005
+    lat: 49.453152
+    lon: 1.100991
+    service_s: 120
+  - name: ROUEN-006
+    lat: 49.433478
+    lon: 1.062761
+    service_s: 120
+  - name: ROUEN-007
+    lat: 49.416443
+    lon: 1.086355
+    service_s: 120
+  - name: ROUEN-008
+    lat: 49.449813
+    lon: 1.068053
+    service_s: 120
+  - name: ROUEN-009
+    lat: 49.430346
+    lon: 1.117559
+    service_s: 120
+  - name: ROUEN-010
+    lat: 49.467365
+    lon: 1.123095
+    service_s: 120
+  - name: ROUEN-011
+    lat: 49.464248
+    lon: 1.093545
+    service_s: 120
+  - name: ROUEN-012
+    lat: 49.427826
+    lon: 1.101297
+    service_s: 120
+  - name: ROUEN-013
+    lat: 49.450334
+    lon: 1.087464
+    service_s: 120
+  - name: ROUEN-014
+    lat: 49.459543
+    lon: 1.082355
+    service_s: 120
+  - name: ROUEN-015
+    lat: 49.447681
+    lon: 1.124464
+    service_s: 120
+  - name: ROUEN-016
+    lat: 49.458916
+    lon: 1.123678
+    service_s: 120
+  - name: ROUEN-017
+    lat: 49.458174
+    lon: 1.142235
+    service_s: 120
+  - name: ROUEN-018
+    lat: 49.430166
+    lon: 1.080297
+    service_s: 120
+  - name: ROUEN-019
+    lat: 49.466848
+    lon: 1.068448
+    service_s: 120
+  - name: ROUEN-020
+    lat: 49.449231
+    lon: 1.119486
+    service_s: 120
+  - name: ROUEN-021
+    lat: 49.416517
+    lon: 1.105268
+    service_s: 120
+  - name: ROUEN-022
+    lat: 49.41723
+    lon: 1.13029
+    service_s: 120
+  - name: ROUEN-023
+    lat: 49.464133
+    lon: 1.064797
+    service_s: 120
+  - name: ROUEN-024
+    lat: 49.42389
+    lon: 1.116551
+    service_s: 120
+  - name: ROUEN-025
+    lat: 49.453614
+    lon: 1.086713
+    service_s: 120
+  - name: ROUEN-026
+    lat: 49.417285
+    lon: 1.0869
+    service_s: 120
+  - name: ROUEN-027
+    lat: 49.454947
+    lon: 1.13715
+    service_s: 120
+  - name: ROUEN-028
+    lat: 49.437496
+    lon: 1.059741
+    service_s: 120
+  - name: ROUEN-029
+    lat: 49.44694
+    lon: 1.074864
+    service_s: 120
+  - name: ROUEN-030
+    lat: 49.435345
+    lon: 1.122851
+    service_s: 120
+  - name: ROUEN-031
+    lat: 49.470007
+    lon: 1.107298
+    service_s: 120
+  - name: ROUEN-032
+    lat: 49.424412
+    lon: 1.102622
+    service_s: 120
+  - name: ROUEN-033
+    lat: 49.436068
+    lon: 1.104539
+    service_s: 120
+  - name: ROUEN-034
+    lat: 49.460347
+    lon: 1.062224
+    service_s: 120
+  - name: ROUEN-035
+    lat: 49.438688
+    lon: 1.110473
+    service_s: 120
+  - name: ROUEN-036
+    lat: 49.418724
+    lon: 1.091638
+    service_s: 120
+  - name: ROUEN-037
+    lat: 49.443174
+    lon: 1.075872
+    service_s: 120
+  - name: ROUEN-038
+    lat: 49.418807
+    lon: 1.069502
+    service_s: 120
+  - name: ROUEN-039
+    lat: 49.452703
+    lon: 1.111576
+    service_s: 120
+  - name: ROUEN-040
+    lat: 49.436186
+    lon: 1.056754
+    service_s: 120
+  - name: ROUEN-041
+    lat: 49.455511
+    lon: 1.059751
+    service_s: 120
+  - name: ROUEN-042
+    lat: 49.462341
+    lon: 1.074187
+    service_s: 120
+  - name: ROUEN-043
+    lat: 49.468299
+    lon: 1.132051
+    service_s: 120
+  - name: ROUEN-044
+    lat: 49.419907
+    lon: 1.100596
+    service_s: 120
+  - name: ROUEN-045
+    lat: 49.468219
+    lon: 1.126328
+    service_s: 120
+  - name: ROUEN-046
+    lat: 49.431127
+    lon: 1.090703
+    service_s: 120
+  - name: ROUEN-047
+    lat: 49.46
+    lon: 1.069905
+    service_s: 120
+  - name: ROUEN-048
+    lat: 49.448185
+    lon: 1.060866
+    service_s: 120
+  - name: ROUEN-049
+    lat: 49.437663
+    lon: 1.075235
+    service_s: 120
+  - name: ROUEN-050
+    lat: 49.414057
+    lon: 1.078378
+    service_s: 120
+  - name: ROUEN-051
+    lat: 49.435695
+    lon: 1.112184
+    service_s: 120
+  - name: ROUEN-052
+    lat: 49.414668
+    lon: 1.104433
+    service_s: 120
+  - name: ROUEN-053
+    lat: 49.461653
+    lon: 1.091301
+    service_s: 120
+  - name: ROUEN-054
+    lat: 49.443368
+    lon: 1.119502
+    service_s: 120
+  - name: ROUEN-055
+    lat: 49.415535
+    lon: 1.091125
+    service_s: 120
+  - name: ROUEN-056
+    lat: 49.410624
+    lon: 1.103061
+    service_s: 120
+  - name: ROUEN-057
+    lat: 49.457691
+    lon: 1.127708
+    service_s: 120
+  - name: ROUEN-058
+    lat: 49.421191
+    lon: 1.121183
+    service_s: 120
+  - name: ROUEN-059
+    lat: 49.465436
+    lon: 1.110722
+    service_s: 120
+  - name: ROUEN-060
+    lat: 49.460261
+    lon: 1.115691
+    service_s: 120
+  - name: ROUEN-061
+    lat: 49.427993
+    lon: 1.143137
+    service_s: 120
+  - name: ROUEN-062
+    lat: 49.42466
+    lon: 1.059717
+    service_s: 120
+  - name: ROUEN-063
+    lat: 49.458027
+    lon: 1.126398
+    service_s: 120
+  - name: ROUEN-064
+    lat: 49.441267
+    lon: 1.129781
+    service_s: 120
+  - name: ROUEN-065
+    lat: 49.472708
+    lon: 1.102322
+    service_s: 120
+  - name: ROUEN-066
+    lat: 49.436441
+    lon: 1.076564
+    service_s: 120
+  - name: ROUEN-067
+    lat: 49.433889
+    lon: 1.097683
+    service_s: 120
+  - name: ROUEN-068
+    lat: 49.438985
+    lon: 1.144759
+    service_s: 120
+  - name: ROUEN-069
+    lat: 49.460231
+    lon: 1.125397
+    service_s: 120
+  - name: ROUEN-070
+    lat: 49.434304
+    lon: 1.138289
+    service_s: 120
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-VL-02
+  profile: parcels_70x2min
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: LEHAVRE-001
+    lat: 49.509631
+    lon: 0.06318
+    service_s: 120
+  - name: LEHAVRE-002
+    lat: 49.490451
+    lon: 0.083775
+    service_s: 120
+  - name: LEHAVRE-003
+    lat: 49.522997
+    lon: 0.121854
+    service_s: 120
+  - name: LEHAVRE-004
+    lat: 49.493803
+    lon: 0.138069
+    service_s: 120
+  - name: LEHAVRE-005
+    lat: 49.505134
+    lon: 0.067574
+    service_s: 120
+  - name: LEHAVRE-006
+    lat: 49.511809
+    lon: 0.136083
+    service_s: 120
+  - name: LEHAVRE-007
+    lat: 49.50856
+    lon: 0.09443
+    service_s: 120
+  - name: LEHAVRE-008
+    lat: 49.521122
+    lon: 0.113067
+    service_s: 120
+  - name: LEHAVRE-009
+    lat: 49.501509
+    lon: 0.130787
+    service_s: 120
+  - name: LEHAVRE-010
+    lat: 49.522051
+    lon: 0.113566
+    service_s: 120
+  - name: LEHAVRE-011
+    lat: 49.468607
+    lon: 0.140598
+    service_s: 120
+  - name: LEHAVRE-012
+    lat: 49.50372
+    lon: 0.108984
+    service_s: 120
+  - name: LEHAVRE-013
+    lat: 49.522398
+    lon: 0.117752
+    service_s: 120
+  - name: LEHAVRE-014
+    lat: 49.489365
+    lon: 0.125972
+    service_s: 120
+  - name: LEHAVRE-015
+    lat: 49.498934
+    lon: 0.067649
+    service_s: 120
+  - name: LEHAVRE-016
+    lat: 49.465305
+    lon: 0.124826
+    service_s: 120
+  - name: LEHAVRE-017
+    lat: 49.503165
+    lon: 0.127248
+    service_s: 120
+  - name: LEHAVRE-018
+    lat: 49.505049
+    lon: 0.076421
+    service_s: 120
+  - name: LEHAVRE-019
+    lat: 49.470611
+    lon: 0.103057
+    service_s: 120
+  - name: LEHAVRE-020
+    lat: 49.491538
+    lon: 0.152042
+    service_s: 120
+  - name: LEHAVRE-021
+    lat: 49.500727
+    lon: 0.094017
+    service_s: 120
+  - name: LEHAVRE-022
+    lat: 49.478778
+    lon: 0.128226
+    service_s: 120
+  - name: LEHAVRE-023
+    lat: 49.510688
+    lon: 0.117791
+    service_s: 120
+  - name: LEHAVRE-024
+    lat: 49.505486
+    lon: 0.075966
+    service_s: 120
+  - name: LEHAVRE-025
+    lat: 49.512932
+    lon: 0.107935
+    service_s: 120
+  - name: LEHAVRE-026
+    lat: 49.506201
+    lon: 0.059236
+    service_s: 120
+  - name: LEHAVRE-027
+    lat: 49.484266
+    lon: 0.060215
+    service_s: 120
+  - name: LEHAVRE-028
+    lat: 49.494364
+    lon: 0.120059
+    service_s: 120
+  - name: LEHAVRE-029
+    lat: 49.488185
+    lon: 0.156395
+    service_s: 120
+  - name: LEHAVRE-030
+    lat: 49.466897
+    lon: 0.138138
+    service_s: 120
+  - name: LEHAVRE-031
+    lat: 49.49569
+    lon: 0.085943
+    service_s: 120
+  - name: LEHAVRE-032
+    lat: 49.503856
+    lon: 0.087584
+    service_s: 120
+  - name: LEHAVRE-033
+    lat: 49.50026
+    lon: 0.098415
+    service_s: 120
+  - name: LEHAVRE-034
+    lat: 49.529096
+    lon: 0.102782
+    service_s: 120
+  - name: LEHAVRE-035
+    lat: 49.503073
+    lon: 0.061931
+    service_s: 120
+  - name: LEHAVRE-036
+    lat: 49.488349
+    lon: 0.141803
+    service_s: 120
+  - name: LEHAVRE-037
+    lat: 49.482374
+    lon: 0.057241
+    service_s: 120
+  - name: LEHAVRE-038
+    lat: 49.518994
+    lon: 0.133704
+    service_s: 120
+  - name: LEHAVRE-039
+    lat: 49.490664
+    lon: 0.13678
+    service_s: 120
+  - name: LEHAVRE-040
+    lat: 49.487398
+    lon: 0.068195
+    service_s: 120
+  - name: LEHAVRE-041
+    lat: 49.505075
+    lon: 0.151671
+    service_s: 120
+  - name: LEHAVRE-042
+    lat: 49.493919
+    lon: 0.066588
+    service_s: 120
+  - name: LEHAVRE-043
+    lat: 49.521493
+    lon: 0.135325
+    service_s: 120
+  - name: LEHAVRE-044
+    lat: 49.511002
+    lon: 0.154317
+    service_s: 120
+  - name: LEHAVRE-045
+    lat: 49.485889
+    lon: 0.088629
+    service_s: 120
+  - name: LEHAVRE-046
+    lat: 49.523129
+    lon: 0.112024
+    service_s: 120
+  - name: LEHAVRE-047
+    lat: 49.486667
+    lon: 0.122344
+    service_s: 120
+  - name: LEHAVRE-048
+    lat: 49.48465
+    lon: 0.085668
+    service_s: 120
+  - name: LEHAVRE-049
+    lat: 49.507831
+    lon: 0.070717
+    service_s: 120
+  - name: LEHAVRE-050
+    lat: 49.490573
+    lon: 0.067021
+    service_s: 120
+  - name: LEHAVRE-051
+    lat: 49.526955
+    lon: 0.122715
+    service_s: 120
+  - name: LEHAVRE-052
+    lat: 49.524041
+    lon: 0.11115
+    service_s: 120
+  - name: LEHAVRE-053
+    lat: 49.47493
+    lon: 0.091833
+    service_s: 120
+  - name: LEHAVRE-054
+    lat: 49.511994
+    lon: 0.09594
+    service_s: 120
+  - name: LEHAVRE-055
+    lat: 49.507802
+    lon: 0.14999
+    service_s: 120
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-VL-03
+  profile: parcels_70x2min
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: DIEPPE-001
+    lat: 49.940506
+    lon: 1.114647
+    service_s: 120
+  - name: DIEPPE-002
+    lat: 49.921818
+    lon: 1.03156
+    service_s: 120
+  - name: DIEPPE-003
+    lat: 49.934709
+    lon: 1.063848
+    service_s: 120
+  - name: DIEPPE-004
+    lat: 49.933365
+    lon: 1.077584
+    service_s: 120
+  - name: DIEPPE-005
+    lat: 49.930972
+    lon: 1.04636
+    service_s: 120
+  - name: DIEPPE-006
+    lat: 49.950739
+    lon: 1.06219
+    service_s: 120
+  - name: DIEPPE-007
+    lat: 49.88582
+    lon: 1.098598
+    service_s: 120
+  - name: DIEPPE-008
+    lat: 49.897645
+    lon: 1.054743
+    service_s: 120
+  - name: DIEPPE-009
+    lat: 49.910538
+    lon: 1.119002
+    service_s: 120
+  - name: DIEPPE-010
+    lat: 49.913994
+    lon: 1.091388
+    service_s: 120
+  - name: DIEPPE-011
+    lat: 49.909784
+    lon: 1.101536
+    service_s: 120
+  - name: DIEPPE-012
+    lat: 49.951407
+    lon: 1.106909
+    service_s: 120
+  - name: DIEPPE-013
+    lat: 49.943448
+    lon: 1.08506
+    service_s: 120
+  - name: DIEPPE-014
+    lat: 49.901301
+    lon: 1.063103
+    service_s: 120
+  - name: DIEPPE-015
+    lat: 49.921647
+    lon: 1.019761
+    service_s: 120
+  - name: DIEPPE-016
+    lat: 49.911985
+    lon: 1.103044
+    service_s: 120
+  - name: DIEPPE-017
+    lat: 49.916177
+    lon: 1.06771
+    service_s: 120
+  - name: DIEPPE-018
+    lat: 49.932844
+    lon: 1.131322
+    service_s: 120
+  - name: DIEPPE-019
+    lat: 49.93979
+    lon: 1.101383
+    service_s: 120
+  - name: DIEPPE-020
+    lat: 49.956477
+    lon: 1.109375
+    service_s: 120
+  - name: DIEPPE-021
+    lat: 49.897384
+    lon: 1.065666
+    service_s: 120
+  - name: DIEPPE-022
+    lat: 49.94223
+    lon: 1.112435
+    service_s: 120
+  - name: DIEPPE-023
+    lat: 49.886722
+    lon: 1.055167
+    service_s: 120
+  - name: DIEPPE-024
+    lat: 49.92636
+    lon: 1.100331
+    service_s: 120
+  - name: DIEPPE-025
+    lat: 49.915038
+    lon: 1.041352
+    service_s: 120
+  - name: DIEPPE-026
+    lat: 49.9297
+    lon: 1.116259
+    service_s: 120
+  - name: DIEPPE-027
+    lat: 49.91306
+    lon: 1.111187
+    service_s: 120
+  - name: DIEPPE-028
+    lat: 49.932665
+    lon: 1.136235
+    service_s: 120
+  - name: DIEPPE-029
+    lat: 49.90116
+    lon: 1.061643
+    service_s: 120
+  - name: DIEPPE-030
+    lat: 49.948829
+    lon: 1.046293
+    service_s: 120
+  - name: DIEPPE-031
+    lat: 49.901737
+    lon: 1.109752
+    service_s: 120
+  - name: DIEPPE-032
+    lat: 49.8835
+    lon: 1.076799
+    service_s: 120
+  - name: DIEPPE-033
+    lat: 49.961182
+    lon: 1.081966
+    service_s: 120
+  - name: DIEPPE-034
+    lat: 49.90759
+    lon: 1.084708
+    service_s: 120
+  - name: DIEPPE-035
+    lat: 49.931696
+    lon: 1.054769
+    service_s: 120
+  - name: DIEPPE-036
+    lat: 49.915175
+    lon: 1.100362
+    service_s: 120
+  - name: DIEPPE-037
+    lat: 49.941501
+    lon: 1.030373
+    service_s: 120
+  - name: DIEPPE-038
+    lat: 49.890366
+    lon: 1.072242
+    service_s: 120
+  - name: DIEPPE-039
+    lat: 49.939639
+    lon: 1.093685
+    service_s: 120
+  - name: DIEPPE-040
+    lat: 49.945395
+    lon: 1.03858
+    service_s: 120
+  - name: DIEPPE-041
+    lat: 49.924339
+    lon: 1.065003
+    service_s: 120
+  - name: DIEPPE-042
+    lat: 49.914156
+    lon: 1.101146
+    service_s: 120
+  - name: DIEPPE-043
+    lat: 49.901572
+    lon: 1.092725
+    service_s: 120
+  - name: DIEPPE-044
+    lat: 49.95963
+    lon: 1.086801
+    service_s: 120
+  - name: DIEPPE-045
+    lat: 49.942218
+    lon: 1.036528
+    service_s: 120
+  - name: DIEPPE-046
+    lat: 49.931803
+    lon: 1.106668
+    service_s: 120
+  - name: DIEPPE-047
+    lat: 49.951155
+    lon: 1.044629
+    service_s: 120
+  - name: DIEPPE-048
+    lat: 49.897153
+    lon: 1.058033
+    service_s: 120
+  - name: DIEPPE-049
+    lat: 49.954907
+    lon: 1.049199
+    service_s: 120
+  - name: DIEPPE-050
+    lat: 49.91827
+    lon: 1.084378
+    service_s: 120
+  - name: DIEPPE-051
+    lat: 49.913003
+    lon: 1.049282
+    service_s: 120
+  - name: DIEPPE-052
+    lat: 49.932327
+    lon: 1.136733
+    service_s: 120
+  - name: DIEPPE-053
+    lat: 49.94833
+    lon: 1.049906
+    service_s: 120
+  - name: DIEPPE-054
+    lat: 49.936676
+    lon: 1.026339
+    service_s: 120
+  - name: DIEPPE-055
+    lat: 49.949215
+    lon: 1.122984
+    service_s: 120
+  - name: DIEPPE-056
+    lat: 49.958114
+    lon: 1.098624
+    service_s: 120
+  - name: DIEPPE-057
+    lat: 49.926189
+    lon: 1.064975
+    service_s: 120
+  - name: DIEPPE-058
+    lat: 49.895907
+    lon: 1.092545
+    service_s: 120
+  - name: DIEPPE-059
+    lat: 49.91077
+    lon: 1.124817
+    service_s: 120
+  - name: DIEPPE-060
+    lat: 49.955296
+    lon: 1.094392
+    service_s: 120
+  - name: DIEPPE-061
+    lat: 49.914621
+    lon: 1.115643
+    service_s: 120
+  - name: DIEPPE-062
+    lat: 49.896126
+    lon: 1.034438
+    service_s: 120
+  - name: DIEPPE-063
+    lat: 49.94584
+    lon: 1.112799
+    service_s: 120
+  - name: DIEPPE-064
+    lat: 49.921205
+    lon: 1.018226
+    service_s: 120
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-VL-04
+  profile: parcels_70x2min
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: EVREUX-001
+    lat: 49.017939
+    lon: 1.106882
+    service_s: 120
+  - name: EVREUX-002
+    lat: 49.014454
+    lon: 1.13777
+    service_s: 120
+  - name: EVREUX-003
+    lat: 49.005872
+    lon: 1.149604
+    service_s: 120
+  - name: EVREUX-004
+    lat: 49.021693
+    lon: 1.129256
+    service_s: 120
+  - name: EVREUX-005
+    lat: 49.008195
+    lon: 1.167538
+    service_s: 120
+  - name: EVREUX-006
+    lat: 49.047195
+    lon: 1.157481
+    service_s: 120
+  - name: EVREUX-007
+    lat: 49.008212
+    lon: 1.111922
+    service_s: 120
+  - name: EVREUX-008
+    lat: 49.035297
+    lon: 1.120943
+    service_s: 120
+  - name: EVREUX-009
+    lat: 49.025928
+    lon: 1.105058
+    service_s: 120
+  - name: EVREUX-010
+    lat: 49.020004
+    lon: 1.197286
+    service_s: 120
+  - name: EVREUX-011
+    lat: 49.002088
+    lon: 1.124518
+    service_s: 120
+  - name: EVREUX-012
+    lat: 49.011591
+    lon: 1.134956
+    service_s: 120
+  - name: EVREUX-013
+    lat: 49.043659
+    lon: 1.185918
+    service_s: 120
+  - name: EVREUX-014
+    lat: 49.062908
+    lon: 1.155077
+    service_s: 120
+  - name: EVREUX-015
+    lat: 49.009228
+    lon: 1.160626
+    service_s: 120
+  - name: EVREUX-016
+    lat: 49.03195
+    lon: 1.17016
+    service_s: 120
+  - name: EVREUX-017
+    lat: 49.005057
+    lon: 1.108386
+    service_s: 120
+  - name: EVREUX-018
+    lat: 49.036711
+    lon: 1.103823
+    service_s: 120
+  - name: EVREUX-019
+    lat: 49.012514
+    lon: 1.104126
+    service_s: 120
+  - name: EVREUX-020
+    lat: 49.04829
+    lon: 1.115351
+    service_s: 120
+  - name: EVREUX-021
+    lat: 49.046175
+    lon: 1.170793
+    service_s: 120
+  - name: EVREUX-022
+    lat: 49.00939
+    lon: 1.1855
+    service_s: 120
+  - name: EVREUX-023
+    lat: 49.006027
+    lon: 1.188236
+    service_s: 120
+  - name: EVREUX-024
+    lat: 49.059103
+    lon: 1.159407
+    service_s: 120
+  - name: EVREUX-025
+    lat: 48.997616
+    lon: 1.133616
+    service_s: 120
+  - name: EVREUX-026
+    lat: 49.019355
+    lon: 1.115045
+    service_s: 120
+  - name: EVREUX-027
+    lat: 49.051779
+    lon: 1.187963
+    service_s: 120
+  - name: EVREUX-028
+    lat: 49.030892
+    lon: 1.130477
+    service_s: 120
+  - name: EVREUX-029
+    lat: 49.018523
+    lon: 1.112761
+    service_s: 120
+  - name: EVREUX-030
+    lat: 49.007767
+    lon: 1.151018
+    service_s: 120
+  - name: EVREUX-031
+    lat: 49.006058
+    lon: 1.164483
+    service_s: 120
+  - name: EVREUX-032
+    lat: 49.043078
+    lon: 1.10362
+    service_s: 120
+  - name: EVREUX-033
+    lat: 49.039408
+    lon: 1.100789
+    service_s: 120
+  - name: EVREUX-034
+    lat: 49.017039
+    lon: 1.164096
+    service_s: 120
+  - name: EVREUX-035
+    lat: 49.003891
+    lon: 1.150411
+    service_s: 120
+  - name: EVREUX-036
+    lat: 49.060453
+    lon: 1.141422
+    service_s: 120
+  - name: EVREUX-037
+    lat: 49.031063
+    lon: 1.10189
+    service_s: 120
+  - name: EVREUX-038
+    lat: 49.034484
+    lon: 1.125081
+    service_s: 120
+  - name: EVREUX-039
+    lat: 49.058215
+    lon: 1.154504
+    service_s: 120
+  - name: EVREUX-040
+    lat: 49.015031
+    lon: 1.174856
+    service_s: 120
+  - name: EVREUX-041
+    lat: 49.036285
+    lon: 1.159079
+    service_s: 120
+  - name: EVREUX-042
+    lat: 49.046222
+    lon: 1.169453
+    service_s: 120
+  - name: EVREUX-043
+    lat: 49.036474
+    lon: 1.128188
+    service_s: 120
+  - name: EVREUX-044
+    lat: 49.032392
+    lon: 1.119191
+    service_s: 120
+  - name: EVREUX-045
+    lat: 49.020221
+    lon: 1.156806
+    service_s: 120
+  - name: EVREUX-046
+    lat: 49.005744
+    lon: 1.154244
+    service_s: 120
+  - name: EVREUX-047
+    lat: 49.032279
+    lon: 1.202912
+    service_s: 120
+  - name: EVREUX-048
+    lat: 49.012558
+    lon: 1.104271
+    service_s: 120
+  - name: EVREUX-049
+    lat: 49.019262
+    lon: 1.185431
+    service_s: 120
+  - name: EVREUX-050
+    lat: 49.04052
+    lon: 1.126923
+    service_s: 120
+  - name: EVREUX-051
+    lat: 48.998869
+    lon: 1.17655
+    service_s: 120
+  - name: EVREUX-052
+    lat: 49.001756
+    lon: 1.146124
+    service_s: 120
+  - name: EVREUX-053
+    lat: 49.008751
+    lon: 1.189259
+    service_s: 120
+  - name: EVREUX-054
+    lat: 49.052852
+    lon: 1.1445
+    service_s: 120
+  - name: EVREUX-055
+    lat: 49.044103
+    lon: 1.120744
+    service_s: 120
+  - name: EVREUX-056
+    lat: 48.999942
+    lon: 1.163354
+    service_s: 120
+  - name: EVREUX-057
+    lat: 49.002229
+    lon: 1.175118
+    service_s: 120
+  - name: EVREUX-058
+    lat: 49.023836
+    lon: 1.202175
+    service_s: 120
+  - name: EVREUX-059
+    lat: 49.013501
+    lon: 1.183402
+    service_s: 120
+  - name: EVREUX-060
+    lat: 49.004379
+    lon: 1.12808
+    service_s: 120
+  - name: EVREUX-061
+    lat: 49.032516
+    lon: 1.13569
+    service_s: 120
+  - name: EVREUX-062
+    lat: 49.05843
+    lon: 1.171226
+    service_s: 120
+  - name: EVREUX-063
+    lat: 49.044208
+    lon: 1.136941
+    service_s: 120
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-VL-05
+  profile: parcels_70x2min
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: VERNON-001
+    lat: 49.114596
+    lon: 1.454265
+    service_s: 120
+  - name: VERNON-002
+    lat: 49.065866
+    lon: 1.512437
+    service_s: 120
+  - name: VERNON-003
+    lat: 49.101887
+    lon: 1.513001
+    service_s: 120
+  - name: VERNON-004
+    lat: 49.091773
+    lon: 1.48159
+    service_s: 120
+  - name: VERNON-005
+    lat: 49.122087
+    lon: 1.456745
+    service_s: 120
+  - name: VERNON-006
+    lat: 49.064571
+    lon: 1.497631
+    service_s: 120
+  - name: VERNON-007
+    lat: 49.063989
+    lon: 1.490179
+    service_s: 120
+  - name: VERNON-008
+    lat: 49.126273
+    lon: 1.505735
+    service_s: 120
+  - name: VERNON-009
+    lat: 49.097197
+    lon: 1.493511
+    service_s: 120
+  - name: VERNON-010
+    lat: 49.081829
+    lon: 1.479546
+    service_s: 120
+  - name: VERNON-011
+    lat: 49.119451
+    lon: 1.497242
+    service_s: 120
+  - name: VERNON-012
+    lat: 49.063104
+    lon: 1.493866
+    service_s: 120
+  - name: VERNON-013
+    lat: 49.083811
+    lon: 1.471428
+    service_s: 120
+  - name: VERNON-014
+    lat: 49.113491
+    lon: 1.524705
+    service_s: 120
+  - name: VERNON-015
+    lat: 49.085846
+    lon: 1.537474
+    service_s: 120
+  - name: VERNON-016
+    lat: 49.094899
+    lon: 1.506815
+    service_s: 120
+  - name: VERNON-017
+    lat: 49.074978
+    lon: 1.475484
+    service_s: 120
+  - name: VERNON-018
+    lat: 49.114277
+    lon: 1.4462
+    service_s: 120
+  - name: VERNON-019
+    lat: 49.106969
+    lon: 1.530228
+    service_s: 120
+  - name: VERNON-020
+    lat: 49.07158
+    lon: 1.457199
+    service_s: 120
+  - name: VERNON-021
+    lat: 49.081639
+    lon: 1.491467
+    service_s: 120
+  - name: VERNON-022
+    lat: 49.073447
+    lon: 1.448124
+    service_s: 120
+  - name: VERNON-023
+    lat: 49.091733
+    lon: 1.508002
+    service_s: 120
+  - name: VERNON-024
+    lat: 49.119053
+    lon: 1.461149
+    service_s: 120
+  - name: VERNON-025
+    lat: 49.110094
+    lon: 1.46431
+    service_s: 120
+  - name: VERNON-026
+    lat: 49.114483
+    lon: 1.467822
+    service_s: 120
+  - name: VERNON-027
+    lat: 49.063229
+    lon: 1.511213
+    service_s: 120
+  - name: VERNON-028
+    lat: 49.090152
+    lon: 1.506296
+    service_s: 120
+  - name: VERNON-029
+    lat: 49.067774
+    lon: 1.509772
+    service_s: 120
+  - name: VERNON-030
+    lat: 49.104922
+    lon: 1.446572
+    service_s: 120
+  - name: VERNON-031
+    lat: 49.086372
+    lon: 1.534924
+    service_s: 120
+  - name: VERNON-032
+    lat: 49.075553
+    lon: 1.499202
+    service_s: 120
+  - name: VERNON-033
+    lat: 49.09573
+    lon: 1.448944
+    service_s: 120
+  - name: VERNON-034
+    lat: 49.069443
+    lon: 1.484691
+    service_s: 120
+  - name: VERNON-035
+    lat: 49.078052
+    lon: 1.505964
+    service_s: 120
+  - name: VERNON-036
+    lat: 49.109972
+    lon: 1.531799
+    service_s: 120
+  - name: VERNON-037
+    lat: 49.126729
+    lon: 1.490987
+    service_s: 120
+  - name: VERNON-038
+    lat: 49.07734
+    lon: 1.460215
+    service_s: 120
+  - name: VERNON-039
+    lat: 49.096969
+    lon: 1.522248
+    service_s: 120
+  - name: VERNON-040
+    lat: 49.123166
+    lon: 1.510031
+    service_s: 120
+  - name: VERNON-041
+    lat: 49.077186
+    lon: 1.496485
+    service_s: 120
+  - name: VERNON-042
+    lat: 49.078675
+    lon: 1.51239
+    service_s: 120
+  - name: VERNON-043
+    lat: 49.122693
+    lon: 1.481447
+    service_s: 120
+  - name: VERNON-044
+    lat: 49.091839
+    lon: 1.494239
+    service_s: 120
+  - name: VERNON-045
+    lat: 49.082667
+    lon: 1.485998
+    service_s: 120
+  - name: VERNON-046
+    lat: 49.067906
+    lon: 1.490968
+    service_s: 120
+  - name: VERNON-047
+    lat: 49.069291
+    lon: 1.461244
+    service_s: 120
+  - name: VERNON-048
+    lat: 49.068726
+    lon: 1.499249
+    service_s: 120
+  - name: VERNON-049
+    lat: 49.103792
+    lon: 1.491973
+    service_s: 120
+  - name: VERNON-050
+    lat: 49.121054
+    lon: 1.473208
+    service_s: 120
+  - name: VERNON-051
+    lat: 49.097584
+    lon: 1.447725
+    service_s: 120
+  - name: VERNON-052
+    lat: 49.104818
+    lon: 1.453302
+    service_s: 120
+  - name: VERNON-053
+    lat: 49.120133
+    lon: 1.465952
+    service_s: 120
+  - name: VERNON-054
+    lat: 49.122878
+    lon: 1.482969
+    service_s: 120
+  - name: VERNON-055
+    lat: 49.105393
+    lon: 1.508987
+    service_s: 120
+  - name: VERNON-056
+    lat: 49.103767
+    lon: 1.506608
+    service_s: 120
+  - name: VERNON-057
+    lat: 49.066762
+    lon: 1.492075
+    service_s: 120
+  - name: VERNON-058
+    lat: 49.108124
+    lon: 1.493952
+    service_s: 120
+  - name: VERNON-059
+    lat: 49.068304
+    lon: 1.482926
+    service_s: 120
+  - name: VERNON-060
+    lat: 49.087523
+    lon: 1.435398
+    service_s: 120
+  - name: VERNON-061
+    lat: 49.104292
+    lon: 1.51257
+    service_s: 120
+  - name: VERNON-062
+    lat: 49.10868
+    lon: 1.492411
+    service_s: 120
+  - name: VERNON-063
+    lat: 49.094352
+    lon: 1.512163
+    service_s: 120
+  - name: VERNON-064
+    lat: 49.118967
+    lon: 1.482895
+    service_s: 120
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-VL-06
+  profile: parcels_70x2min
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: FECAMP-001
+    lat: 49.78022
+    lon: 0.410369
+    service_s: 120
+  - name: FECAMP-002
+    lat: 49.759082
+    lon: 0.318821
+    service_s: 120
+  - name: FECAMP-003
+    lat: 49.740647
+    lon: 0.324589
+    service_s: 120
+  - name: FECAMP-004
+    lat: 49.766765
+    lon: 0.33649
+    service_s: 120
+  - name: FECAMP-005
+    lat: 49.762314
+    lon: 0.399588
+    service_s: 120
+  - name: FECAMP-006
+    lat: 49.762278
+    lon: 0.316996
+    service_s: 120
+  - name: FECAMP-007
+    lat: 49.777663
+    lon: 0.330564
+    service_s: 120
+  - name: FECAMP-008
+    lat: 49.749285
+    lon: 0.363708
+    service_s: 120
+  - name: FECAMP-009
+    lat: 49.76428
+    lon: 0.383275
+    service_s: 120
+  - name: FECAMP-010
+    lat: 49.784607
+    lon: 0.359967
+    service_s: 120
+  - name: FECAMP-011
+    lat: 49.783345
+    lon: 0.419282
+    service_s: 120
+  - name: FECAMP-012
+    lat: 49.735873
+    lon: 0.333554
+    service_s: 120
+  - name: FECAMP-013
+    lat: 49.791285
+    lon: 0.383171
+    service_s: 120
+  - name: FECAMP-014
+    lat: 49.765627
+    lon: 0.333443
+    service_s: 120
+  - name: FECAMP-015
+    lat: 49.737018
+    lon: 0.400642
+    service_s: 120
+  - name: FECAMP-016
+    lat: 49.793488
+    lon: 0.354513
+    service_s: 120
+  - name: FECAMP-017
+    lat: 49.73746
+    lon: 0.338265
+    service_s: 120
+  - name: FECAMP-018
+    lat: 49.746148
+    lon: 0.424156
+    service_s: 120
+  - name: FECAMP-019
+    lat: 49.774251
+    lon: 0.381673
+    service_s: 120
+  - name: FECAMP-020
+    lat: 49.783448
+    lon: 0.402055
+    service_s: 120
+  - name: FECAMP-021
+    lat: 49.764389
+    lon: 0.397426
+    service_s: 120
+  - name: FECAMP-022
+    lat: 49.757617
+    lon: 0.372026
+    service_s: 120
+  - name: FECAMP-023
+    lat: 49.786056
+    lon: 0.363072
+    service_s: 120
+  - name: FECAMP-024
+    lat: 49.738914
+    lon: 0.367238
+    service_s: 120
+  - name: FECAMP-025
+    lat: 49.766316
+    lon: 0.326469
+    service_s: 120
+  - name: FECAMP-026
+    lat: 49.74212
+    lon: 0.41945
+    service_s: 120
+  - name: FECAMP-027
+    lat: 49.732508
+    lon: 0.337116
+    service_s: 120
+  - name: FECAMP-028
+    lat: 49.744159
+    lon: 0.419897
+    service_s: 120
+  - name: FECAMP-029
+    lat: 49.749971
+    lon: 0.337162
+    service_s: 120
+  - name: FECAMP-030
+    lat: 49.739915
+    lon: 0.415767
+    service_s: 120
+  - name: FECAMP-031
+    lat: 49.772385
+    lon: 0.424466
+    service_s: 120
+  - name: FECAMP-032
+    lat: 49.77186
+    lon: 0.36629
+    service_s: 120
+  - name: FECAMP-033
+    lat: 49.742778
+    lon: 0.327606
+    service_s: 120
+  - name: FECAMP-034
+    lat: 49.771758
+    lon: 0.398031
+    service_s: 120
+  - name: FECAMP-035
+    lat: 49.726229
+    lon: 0.359435
+    service_s: 120
+  - name: FECAMP-036
+    lat: 49.756888
+    lon: 0.316373
+    service_s: 120
+  - name: FECAMP-037
+    lat: 49.770273
+    lon: 0.412126
+    service_s: 120
+  - name: FECAMP-038
+    lat: 49.760226
+    lon: 0.364027
+    service_s: 120
+  - name: FECAMP-039
+    lat: 49.779147
+    lon: 0.374921
+    service_s: 120
+  - name: FECAMP-040
+    lat: 49.754206
+    lon: 0.392728
+    service_s: 120
+  - name: FECAMP-041
+    lat: 49.740768
+    lon: 0.32584
+    service_s: 120
+  - name: FECAMP-042
+    lat: 49.756898
+    lon: 0.433878
+    service_s: 120
+  - name: FECAMP-043
+    lat: 49.788745
+    lon: 0.368946
+    service_s: 120
+  - name: FECAMP-044
+    lat: 49.749182
+    lon: 0.375477
+    service_s: 120
+  - name: FECAMP-045
+    lat: 49.735204
+    lon: 0.350974
+    service_s: 120
+  - name: FECAMP-046
+    lat: 49.79093
+    lon: 0.399117
+    service_s: 120
+  - name: FECAMP-047
+    lat: 49.73464
+    lon: 0.344402
+    service_s: 120
+  - name: FECAMP-048
+    lat: 49.771837
+    lon: 0.410573
+    service_s: 120
+  - name: FECAMP-049
+    lat: 49.77693
+    lon: 0.357195
+    service_s: 120
+  - name: FECAMP-050
+    lat: 49.732107
+    lon: 0.405963
+    service_s: 120
+  - name: FECAMP-051
+    lat: 49.735986
+    lon: 0.362982
+    service_s: 120
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-VL-07
+  profile: parcels_70x2min
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: LETREPORT-001
+    lat: 50.033436
+    lon: 1.378631
+    service_s: 120
+  - name: LETREPORT-002
+    lat: 50.063076
+    lon: 1.386278
+    service_s: 120
+  - name: LETREPORT-003
+    lat: 50.072539
+    lon: 1.399643
+    service_s: 120
+  - name: LETREPORT-004
+    lat: 50.032294
+    lon: 1.412632
+    service_s: 120
+  - name: LETREPORT-005
+    lat: 50.059266
+    lon: 1.433274
+    service_s: 120
+  - name: LETREPORT-006
+    lat: 50.067933
+    lon: 1.318872
+    service_s: 120
+  - name: LETREPORT-007
+    lat: 50.05791
+    lon: 1.361417
+    service_s: 120
+  - name: LETREPORT-008
+    lat: 50.059302
+    lon: 1.326242
+    service_s: 120
+  - name: LETREPORT-009
+    lat: 50.067577
+    lon: 1.415742
+    service_s: 120
+  - name: LETREPORT-010
+    lat: 50.074342
+    lon: 1.398157
+    service_s: 120
+  - name: LETREPORT-011
+    lat: 50.044211
+    lon: 1.400794
+    service_s: 120
+  - name: LETREPORT-012
+    lat: 50.064085
+    lon: 1.419184
+    service_s: 120
+  - name: LETREPORT-013
+    lat: 50.028395
+    lon: 1.391262
+    service_s: 120
+  - name: LETREPORT-014
+    lat: 50.090654
+    lon: 1.35621
+    service_s: 120
+  - name: LETREPORT-015
+    lat: 50.061587
+    lon: 1.369824
+    service_s: 120
+  - name: LETREPORT-016
+    lat: 50.042888
+    lon: 1.39224
+    service_s: 120
+  - name: LETREPORT-017
+    lat: 50.054547
+    lon: 1.396077
+    service_s: 120
+  - name: LETREPORT-018
+    lat: 50.08583
+    lon: 1.404798
+    service_s: 120
+  - name: LETREPORT-019
+    lat: 50.096754
+    lon: 1.360166
+    service_s: 120
+  - name: LETREPORT-020
+    lat: 50.076219
+    lon: 1.330328
+    service_s: 120
+  - name: LETREPORT-021
+    lat: 50.063884
+    lon: 1.332862
+    service_s: 120
+  - name: LETREPORT-022
+    lat: 50.080583
+    lon: 1.402198
+    service_s: 120
+  - name: LETREPORT-023
+    lat: 50.048667
+    lon: 1.353663
+    service_s: 120
+  - name: LETREPORT-024
+    lat: 50.085453
+    lon: 1.411638
+    service_s: 120
+  - name: LETREPORT-025
+    lat: 50.048412
+    lon: 1.378366
+    service_s: 120
+  - name: LETREPORT-026
+    lat: 50.090612
+    lon: 1.344805
+    service_s: 120
+  - name: LETREPORT-027
+    lat: 50.094723
+    lon: 1.369973
+    service_s: 120
+  - name: LETREPORT-028
+    lat: 50.056973
+    lon: 1.375521
+    service_s: 120
+  - name: LETREPORT-029
+    lat: 50.041167
+    lon: 1.325415
+    service_s: 120
+  - name: LETREPORT-030
+    lat: 50.034365
+    lon: 1.409941
+    service_s: 120
+  - name: LETREPORT-031
+    lat: 50.061657
+    lon: 1.334063
+    service_s: 120
+  - name: LETREPORT-032
+    lat: 50.035733
+    lon: 1.378938
+    service_s: 120
+  - name: LETREPORT-033
+    lat: 50.048818
+    lon: 1.411335
+    service_s: 120
+  - name: LETREPORT-034
+    lat: 50.054451
+    lon: 1.434378
+    service_s: 120
+  - name: LETREPORT-035
+    lat: 50.072272
+    lon: 1.353146
+    service_s: 120
+  - name: LETREPORT-036
+    lat: 50.078916
+    lon: 1.326586
+    service_s: 120
+  - name: LETREPORT-037
+    lat: 50.062859
+    lon: 1.34094
+    service_s: 120
+  - name: LETREPORT-038
+    lat: 50.085268
+    lon: 1.331747
+    service_s: 120
+  - name: LETREPORT-039
+    lat: 50.020169
+    lon: 1.392503
+    service_s: 120
+  - name: LETREPORT-040
+    lat: 50.085699
+    lon: 1.405383
+    service_s: 120
+  - name: LETREPORT-041
+    lat: 50.087339
+    lon: 1.419456
+    service_s: 120
+  - name: LETREPORT-042
+    lat: 50.093615
+    lon: 1.345473
+    service_s: 120
+  - name: LETREPORT-043
+    lat: 50.048394
+    lon: 1.387233
+    service_s: 120
+  - name: LETREPORT-044
+    lat: 50.05218
+    lon: 1.392843
+    service_s: 120
+  - name: LETREPORT-045
+    lat: 50.062947
+    lon: 1.380821
+    service_s: 120
+  - name: LETREPORT-046
+    lat: 50.05191
+    lon: 1.433806
+    service_s: 120
+  - name: LETREPORT-047
+    lat: 50.048142
+    lon: 1.379395
+    service_s: 120
+  - name: LETREPORT-048
+    lat: 50.044425
+    lon: 1.352795
+    service_s: 120
+  - name: LETREPORT-049
+    lat: 50.071341
+    lon: 1.410802
+    service_s: 120
+  - name: LETREPORT-050
+    lat: 50.038366
+    lon: 1.35946
+    service_s: 120
+  - name: LETREPORT-051
+    lat: 50.050596
+    lon: 1.420167
+    service_s: 120
+  - name: LETREPORT-052
+    lat: 50.038174
+    lon: 1.413952
+    service_s: 120
+  - name: LETREPORT-053
+    lat: 50.051792
+    lon: 1.333404
+    service_s: 120
+  - name: LETREPORT-054
+    lat: 50.090667
+    lon: 1.380735
+    service_s: 120
+  - name: LETREPORT-055
+    lat: 50.091573
+    lon: 1.36386
+    service_s: 120
+  - name: LETREPORT-056
+    lat: 50.069385
+    lon: 1.401357
+    service_s: 120
+  - name: LETREPORT-057
+    lat: 50.019041
+    lon: 1.380061
+    service_s: 120
+  - name: LETREPORT-058
+    lat: 50.079052
+    lon: 1.418704
+    service_s: 120
+  - name: LETREPORT-059
+    lat: 50.074722
+    lon: 1.368134
+    service_s: 120
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-VL-08
+  profile: parcels_70x2min
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: YVETOT-001
+    lat: 49.644631
+    lon: 0.741083
+    service_s: 120
+  - name: YVETOT-002
+    lat: 49.632598
+    lon: 0.771536
+    service_s: 120
+  - name: YVETOT-003
+    lat: 49.607568
+    lon: 0.71989
+    service_s: 120
+  - name: YVETOT-004
+    lat: 49.642082
+    lon: 0.774288
+    service_s: 120
+  - name: YVETOT-005
+    lat: 49.610446
+    lon: 0.7626
+    service_s: 120
+  - name: YVETOT-006
+    lat: 49.642269
+    lon: 0.75525
+    service_s: 120
+  - name: YVETOT-007
+    lat: 49.641049
+    lon: 0.782502
+    service_s: 120
+  - name: YVETOT-008
+    lat: 49.638828
+    lon: 0.752158
+    service_s: 120
+  - name: YVETOT-009
+    lat: 49.617959
+    lon: 0.778033
+    service_s: 120
+  - name: YVETOT-010
+    lat: 49.600225
+    lon: 0.789212
+    service_s: 120
+  - name: YVETOT-011
+    lat: 49.639165
+    lon: 0.775326
+    service_s: 120
+  - name: YVETOT-012
+    lat: 49.634632
+    lon: 0.734364
+    service_s: 120
+  - name: YVETOT-013
+    lat: 49.598115
+    lon: 0.728557
+    service_s: 120
+  - name: YVETOT-014
+    lat: 49.637944
+    lon: 0.75298
+    service_s: 120
+  - name: YVETOT-015
+    lat: 49.645069
+    lon: 0.767313
+    service_s: 120
+  - name: YVETOT-016
+    lat: 49.6191
+    lon: 0.722391
+    service_s: 120
+  - name: YVETOT-017
+    lat: 49.610162
+    lon: 0.731256
+    service_s: 120
+  - name: YVETOT-018
+    lat: 49.615881
+    lon: 0.790586
+    service_s: 120
+  - name: YVETOT-019
+    lat: 49.614587
+    lon: 0.779706
+    service_s: 120
+  - name: YVETOT-020
+    lat: 49.642778
+    lon: 0.746831
+    service_s: 120
+  - name: YVETOT-021
+    lat: 49.594753
+    lon: 0.738345
+    service_s: 120
+  - name: YVETOT-022
+    lat: 49.625415
+    lon: 0.793808
+    service_s: 120
+  - name: YVETOT-023
+    lat: 49.617515
+    lon: 0.714363
+    service_s: 120
+  - name: YVETOT-024
+    lat: 49.646786
+    lon: 0.742361
+    service_s: 120
+  - name: YVETOT-025
+    lat: 49.599093
+    lon: 0.718307
+    service_s: 120
+  - name: YVETOT-026
+    lat: 49.602557
+    lon: 0.733745
+    service_s: 120
+  - name: YVETOT-027
+    lat: 49.59423
+    lon: 0.735855
+    service_s: 120
+  - name: YVETOT-028
+    lat: 49.594025
+    lon: 0.730239
+    service_s: 120
+  - name: YVETOT-029
+    lat: 49.595763
+    lon: 0.721532
+    service_s: 120
+  - name: YVETOT-030
+    lat: 49.592695
+    lon: 0.724405
+    service_s: 120
+  - name: YVETOT-031
+    lat: 49.623493
+    lon: 0.727301
+    service_s: 120
+  - name: YVETOT-032
+    lat: 49.592672
+    lon: 0.748821
+    service_s: 120
+  - name: YVETOT-033
+    lat: 49.626268
+    lon: 0.748833
+    service_s: 120
+  - name: YVETOT-034
+    lat: 49.641819
+    lon: 0.772325
+    service_s: 120
+  - name: YVETOT-035
+    lat: 49.614135
+    lon: 0.735509
+    service_s: 120
+  - name: YVETOT-036
+    lat: 49.610895
+    lon: 0.705002
+    service_s: 120
+  - name: YVETOT-037
+    lat: 49.590115
+    lon: 0.775974
+    service_s: 120
+  - name: YVETOT-038
+    lat: 49.602463
+    lon: 0.764377
+    service_s: 120
+  - name: YVETOT-039
+    lat: 49.596072
+    lon: 0.764972
+    service_s: 120
+  - name: YVETOT-040
+    lat: 49.640576
+    lon: 0.730317
+    service_s: 120
+  - name: YVETOT-041
+    lat: 49.614479
+    lon: 0.769386
+    service_s: 120
+  - name: YVETOT-042
+    lat: 49.61448
+    lon: 0.771208
+    service_s: 120
+  - name: YVETOT-043
+    lat: 49.587571
+    lon: 0.745576
+    service_s: 120
+  - name: YVETOT-044
+    lat: 49.6105
+    lon: 0.801092
+    service_s: 120
+  - name: YVETOT-045
+    lat: 49.638541
+    lon: 0.7234
+    service_s: 120
+  - name: YVETOT-046
+    lat: 49.619497
+    lon: 0.79696
+    service_s: 120
+  - name: YVETOT-047
+    lat: 49.623601
+    lon: 0.718105
+    service_s: 120
+  - name: YVETOT-048
+    lat: 49.593704
+    lon: 0.733916
+    service_s: 120
+  - name: YVETOT-049
+    lat: 49.594918
+    lon: 0.769675
+    service_s: 120
+  - name: YVETOT-050
+    lat: 49.636623
+    lon: 0.790396
+    service_s: 120
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-VL-09
+  profile: parcels_70x2min
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: LOUVIERS-001
+    lat: 49.205572
+    lon: 1.213792
+    service_s: 120
+  - name: LOUVIERS-002
+    lat: 49.202154
+    lon: 1.145405
+    service_s: 120
+  - name: LOUVIERS-003
+    lat: 49.193068
+    lon: 1.140208
+    service_s: 120
+  - name: LOUVIERS-004
+    lat: 49.191385
+    lon: 1.159037
+    service_s: 120
+  - name: LOUVIERS-005
+    lat: 49.236437
+    lon: 1.205743
+    service_s: 120
+  - name: LOUVIERS-006
+    lat: 49.21787
+    lon: 1.18302
+    service_s: 120
+  - name: LOUVIERS-007
+    lat: 49.241214
+    lon: 1.214166
+    service_s: 120
+  - name: LOUVIERS-008
+    lat: 49.211707
+    lon: 1.143662
+    service_s: 120
+  - name: LOUVIERS-009
+    lat: 49.233122
+    lon: 1.14607
+    service_s: 120
+  - name: LOUVIERS-010
+    lat: 49.181137
+    lon: 1.152345
+    service_s: 120
+  - name: LOUVIERS-011
+    lat: 49.201468
+    lon: 1.134615
+    service_s: 120
+  - name: LOUVIERS-012
+    lat: 49.194697
+    lon: 1.208187
+    service_s: 120
+  - name: LOUVIERS-013
+    lat: 49.189471
+    lon: 1.194571
+    service_s: 120
+  - name: LOUVIERS-014
+    lat: 49.204888
+    lon: 1.213231
+    service_s: 120
+  - name: LOUVIERS-015
+    lat: 49.197348
+    lon: 1.159753
+    service_s: 120
+  - name: LOUVIERS-016
+    lat: 49.222016
+    lon: 1.14557
+    service_s: 120
+  - name: LOUVIERS-017
+    lat: 49.229991
+    lon: 1.152663
+    service_s: 120
+  - name: LOUVIERS-018
+    lat: 49.243792
+    lon: 1.132366
+    service_s: 120
+  - name: LOUVIERS-019
+    lat: 49.187585
+    lon: 1.137182
+    service_s: 120
+  - name: LOUVIERS-020
+    lat: 49.225204
+    lon: 1.168688
+    service_s: 120
+  - name: LOUVIERS-021
+    lat: 49.204255
+    lon: 1.225191
+    service_s: 120
+  - name: LOUVIERS-022
+    lat: 49.234742
+    lon: 1.215179
+    service_s: 120
+  - name: LOUVIERS-023
+    lat: 49.202585
+    lon: 1.1539
+    service_s: 120
+  - name: LOUVIERS-024
+    lat: 49.227671
+    lon: 1.225318
+    service_s: 120
+  - name: LOUVIERS-025
+    lat: 49.214464
+    lon: 1.204427
+    service_s: 120
+  - name: LOUVIERS-026
+    lat: 49.248301
+    lon: 1.185297
+    service_s: 120
+  - name: LOUVIERS-027
+    lat: 49.204466
+    lon: 1.121178
+    service_s: 120
+  - name: LOUVIERS-028
+    lat: 49.189224
+    lon: 1.188146
+    service_s: 120
+  - name: LOUVIERS-029
+    lat: 49.197918
+    lon: 1.175272
+    service_s: 120
+  - name: LOUVIERS-030
+    lat: 49.196909
+    lon: 1.12856
+    service_s: 120
+  - name: LOUVIERS-031
+    lat: 49.214
+    lon: 1.201401
+    service_s: 120
+  - name: LOUVIERS-032
+    lat: 49.206584
+    lon: 1.115168
+    service_s: 120
+  - name: LOUVIERS-033
+    lat: 49.237577
+    lon: 1.210968
+    service_s: 120
+  - name: LOUVIERS-034
+    lat: 49.241991
+    lon: 1.207525
+    service_s: 120
+  - name: LOUVIERS-035
+    lat: 49.193972
+    lon: 1.179305
+    service_s: 120
+  - name: LOUVIERS-036
+    lat: 49.218879
+    lon: 1.215308
+    service_s: 120
+  - name: LOUVIERS-037
+    lat: 49.229958
+    lon: 1.191901
+    service_s: 120
+  - name: LOUVIERS-038
+    lat: 49.232106
+    lon: 1.19945
+    service_s: 120
+  - name: LOUVIERS-039
+    lat: 49.219051
+    lon: 1.157137
+    service_s: 120
+  - name: LOUVIERS-040
+    lat: 49.20334
+    lon: 1.14196
+    service_s: 120
+  - name: LOUVIERS-041
+    lat: 49.241077
+    lon: 1.177937
+    service_s: 120
+  - name: LOUVIERS-042
+    lat: 49.186577
+    lon: 1.164515
+    service_s: 120
+  - name: LOUVIERS-043
+    lat: 49.185627
+    lon: 1.14104
+    service_s: 120
+  - name: LOUVIERS-044
+    lat: 49.199686
+    lon: 1.151206
+    service_s: 120
+  - name: LOUVIERS-045
+    lat: 49.215941
+    lon: 1.181241
+    service_s: 120
+  - name: LOUVIERS-046
+    lat: 49.23159
+    lon: 1.123217
+    service_s: 120
+  - name: LOUVIERS-047
+    lat: 49.203892
+    lon: 1.166538
+    service_s: 120
+  - name: LOUVIERS-048
+    lat: 49.201068
+    lon: 1.20216
+    service_s: 120
+  - name: LOUVIERS-049
+    lat: 49.23327
+    lon: 1.190635
+    service_s: 120
+  - name: LOUVIERS-050
+    lat: 49.20652
+    lon: 1.156362
+    service_s: 120
+  - name: LOUVIERS-051
+    lat: 49.187817
+    lon: 1.160542
+    service_s: 120
+  - name: LOUVIERS-052
+    lat: 49.202562
+    lon: 1.141687
+    service_s: 120
+  - name: LOUVIERS-053
+    lat: 49.215282
+    lon: 1.139509
+    service_s: 120
+  - name: LOUVIERS-054
+    lat: 49.192046
+    lon: 1.18118
+    service_s: 120
+  - name: LOUVIERS-055
+    lat: 49.205409
+    lon: 1.159939
+    service_s: 120
+  - name: LOUVIERS-056
+    lat: 49.204744
+    lon: 1.119442
+    service_s: 120
+  - name: LOUVIERS-057
+    lat: 49.231
+    lon: 1.122145
+    service_s: 120
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-VL-10
+  profile: parcels_70x2min
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: GISORS-001
+    lat: 49.301066
+    lon: 1.735366
+    service_s: 120
+  - name: GISORS-002
+    lat: 49.310293
+    lon: 1.758385
+    service_s: 120
+  - name: GISORS-003
+    lat: 49.301744
+    lon: 1.776023
+    service_s: 120
+  - name: GISORS-004
+    lat: 49.247567
+    lon: 1.755515
+    service_s: 120
+  - name: GISORS-005
+    lat: 49.294865
+    lon: 1.809927
+    service_s: 120
+  - name: GISORS-006
+    lat: 49.285502
+    lon: 1.761873
+    service_s: 120
+  - name: GISORS-007
+    lat: 49.303984
+    lon: 1.742795
+    service_s: 120
+  - name: GISORS-008
+    lat: 49.285928
+    lon: 1.796087
+    service_s: 120
+  - name: GISORS-009
+    lat: 49.267277
+    lon: 1.725469
+    service_s: 120
+  - name: GISORS-010
+    lat: 49.297152
+    lon: 1.737544
+    service_s: 120
+  - name: GISORS-011
+    lat: 49.268456
+    lon: 1.826592
+    service_s: 120
+  - name: GISORS-012
+    lat: 49.268821
+    lon: 1.808955
+    service_s: 120
+  - name: GISORS-013
+    lat: 49.289186
+    lon: 1.773977
+    service_s: 120
+  - name: GISORS-014
+    lat: 49.293574
+    lon: 1.802305
+    service_s: 120
+  - name: GISORS-015
+    lat: 49.302846
+    lon: 1.799842
+    service_s: 120
+  - name: GISORS-016
+    lat: 49.259888
+    lon: 1.799676
+    service_s: 120
+  - name: GISORS-017
+    lat: 49.273395
+    lon: 1.74541
+    service_s: 120
+  - name: GISORS-018
+    lat: 49.293381
+    lon: 1.773556
+    service_s: 120
+  - name: GISORS-019
+    lat: 49.288606
+    lon: 1.752577
+    service_s: 120
+  - name: GISORS-020
+    lat: 49.253362
+    lon: 1.781659
+    service_s: 120
+  - name: GISORS-021
+    lat: 49.254921
+    lon: 1.756623
+    service_s: 120
+  - name: GISORS-022
+    lat: 49.263479
+    lon: 1.744113
+    service_s: 120
+  - name: GISORS-023
+    lat: 49.25277
+    lon: 1.760949
+    service_s: 120
+  - name: GISORS-024
+    lat: 49.287249
+    lon: 1.775589
+    service_s: 120
+  - name: GISORS-025
+    lat: 49.265659
+    lon: 1.820772
+    service_s: 120
+  - name: GISORS-026
+    lat: 49.300983
+    lon: 1.791086
+    service_s: 120
+  - name: GISORS-027
+    lat: 49.269264
+    lon: 1.765157
+    service_s: 120
+  - name: GISORS-028
+    lat: 49.271223
+    lon: 1.776149
+    service_s: 120
+  - name: GISORS-029
+    lat: 49.300949
+    lon: 1.824032
+    service_s: 120
+  - name: GISORS-030
+    lat: 49.299975
+    lon: 1.747473
+    service_s: 120
+  - name: GISORS-031
+    lat: 49.301891
+    lon: 1.798062
+    service_s: 120
+  - name: GISORS-032
+    lat: 49.299502
+    lon: 1.762687
+    service_s: 120
+  - name: GISORS-033
+    lat: 49.260526
+    lon: 1.731573
+    service_s: 120
+  - name: GISORS-034
+    lat: 49.309929
+    lon: 1.806902
+    service_s: 120
+  - name: GISORS-035
+    lat: 49.290918
+    lon: 1.824032
+    service_s: 120
+  - name: GISORS-036
+    lat: 49.28471
+    lon: 1.761773
+    service_s: 120
+  - name: GISORS-037
+    lat: 49.265936
+    lon: 1.748019
+    service_s: 120
+  - name: GISORS-038
+    lat: 49.304335
+    lon: 1.784861
+    service_s: 120
+  - name: GISORS-039
+    lat: 49.302961
+    lon: 1.754068
+    service_s: 120
+  - name: GISORS-040
+    lat: 49.269874
+    lon: 1.76874
+    service_s: 120
+  - name: GISORS-041
+    lat: 49.276185
+    lon: 1.733799
+    service_s: 120
+  - name: GISORS-042
+    lat: 49.301264
+    lon: 1.782821
+    service_s: 120
+  - name: GISORS-043
+    lat: 49.29343
+    lon: 1.830151
+    service_s: 120
+  - name: GISORS-044
+    lat: 49.275347
+    lon: 1.801226
+    service_s: 120
+  - name: GISORS-045
+    lat: 49.248609
+    lon: 1.78143
+    service_s: 120
+  - name: GISORS-046
+    lat: 49.294671
+    lon: 1.79932
+    service_s: 120
+  - name: GISORS-047
+    lat: 49.29205
+    lon: 1.740615
+    service_s: 120
+  - name: GISORS-048
+    lat: 49.278287
+    lon: 1.756973
+    service_s: 120
+  - name: GISORS-049
+    lat: 49.274577
+    lon: 1.751539
+    service_s: 120
+  - name: GISORS-050
+    lat: 49.305072
+    lon: 1.748685
+    service_s: 120
+  - name: GISORS-051
+    lat: 49.257636
+    lon: 1.775208
+    service_s: 120
+  - name: GISORS-052
+    lat: 49.287134
+    lon: 1.74061
+    service_s: 120
+  - name: GISORS-053
+    lat: 49.290556
+    lon: 1.770872
+    service_s: 120
+  - name: GISORS-054
+    lat: 49.294745
+    lon: 1.746238
+    service_s: 120
+  - name: GISORS-055
+    lat: 49.309791
+    lon: 1.765811
+    service_s: 120
+  - name: GISORS-056
+    lat: 49.27602
+    lon: 1.812403
+    service_s: 120
+  - name: GISORS-057
+    lat: 49.276025
+    lon: 1.799326
+    service_s: 120
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-VL-11
+  profile: parcels_70x2min
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: ELBEUF-001
+    lat: 49.298573
+    lon: 1.066484
+    service_s: 120
+  - name: ELBEUF-002
+    lat: 49.316274
+    lon: 1.015529
+    service_s: 120
+  - name: ELBEUF-003
+    lat: 49.272077
+    lon: 0.963256
+    service_s: 120
+  - name: ELBEUF-004
+    lat: 49.302003
+    lon: 0.99775
+    service_s: 120
+  - name: ELBEUF-005
+    lat: 49.298606
+    lon: 0.993953
+    service_s: 120
+  - name: ELBEUF-006
+    lat: 49.275846
+    lon: 0.986174
+    service_s: 120
+  - name: ELBEUF-007
+    lat: 49.276097
+    lon: 0.990903
+    service_s: 120
+  - name: ELBEUF-008
+    lat: 49.310031
+    lon: 0.976518
+    service_s: 120
+  - name: ELBEUF-009
+    lat: 49.243889
+    lon: 1.036474
+    service_s: 120
+  - name: ELBEUF-010
+    lat: 49.315473
+    lon: 1.0181
+    service_s: 120
+  - name: ELBEUF-011
+    lat: 49.292479
+    lon: 1.021161
+    service_s: 120
+  - name: ELBEUF-012
+    lat: 49.243869
+    lon: 1.016264
+    service_s: 120
+  - name: ELBEUF-013
+    lat: 49.308067
+    lon: 1.03646
+    service_s: 120
+  - name: ELBEUF-014
+    lat: 49.27839
+    lon: 0.9554
+    service_s: 120
+  - name: ELBEUF-015
+    lat: 49.239918
+    lon: 1.016532
+    service_s: 120
+  - name: ELBEUF-016
+    lat: 49.263853
+    lon: 1.052035
+    service_s: 120
+  - name: ELBEUF-017
+    lat: 49.252853
+    lon: 0.980492
+    service_s: 120
+  - name: ELBEUF-018
+    lat: 49.251538
+    lon: 1.047081
+    service_s: 120
+  - name: ELBEUF-019
+    lat: 49.304526
+    lon: 1.043268
+    service_s: 120
+  - name: ELBEUF-020
+    lat: 49.28097
+    lon: 0.996984
+    service_s: 120
+  - name: ELBEUF-021
+    lat: 49.300256
+    lon: 1.007429
+    service_s: 120
+  - name: ELBEUF-022
+    lat: 49.276533
+    lon: 0.997477
+    service_s: 120
+  - name: ELBEUF-023
+    lat: 49.284091
+    lon: 0.978125
+    service_s: 120
+  - name: ELBEUF-024
+    lat: 49.268112
+    lon: 1.02068
+    service_s: 120
+  - name: ELBEUF-025
+    lat: 49.268075
+    lon: 1.024946
+    service_s: 120
+  - name: ELBEUF-026
+    lat: 49.250837
+    lon: 0.967518
+    service_s: 120
+  - name: ELBEUF-027
+    lat: 49.284071
+    lon: 0.967587
+    service_s: 120
+  - name: ELBEUF-028
+    lat: 49.246246
+    lon: 1.025679
+    service_s: 120
+  - name: ELBEUF-029
+    lat: 49.289576
+    lon: 0.954011
+    service_s: 120
+  - name: ELBEUF-030
+    lat: 49.245599
+    lon: 0.978873
+    service_s: 120
+  - name: ELBEUF-031
+    lat: 49.2807
+    lon: 0.976257
+    service_s: 120
+  - name: ELBEUF-032
+    lat: 49.283298
+    lon: 1.036566
+    service_s: 120
+  - name: ELBEUF-033
+    lat: 49.26885
+    lon: 1.029997
+    service_s: 120
+  - name: ELBEUF-034
+    lat: 49.25256
+    lon: 1.004457
+    service_s: 120
+  - name: ELBEUF-035
+    lat: 49.303857
+    lon: 1.034777
+    service_s: 120
+  - name: ELBEUF-036
+    lat: 49.285116
+    lon: 0.982829
+    service_s: 120
+  - name: ELBEUF-037
+    lat: 49.272961
+    lon: 0.969981
+    service_s: 120
+  - name: ELBEUF-038
+    lat: 49.289213
+    lon: 0.994779
+    service_s: 120
+  - name: ELBEUF-039
+    lat: 49.289339
+    lon: 0.983701
+    service_s: 120
+  - name: ELBEUF-040
+    lat: 49.262643
+    lon: 0.98185
+    service_s: 120
+  - name: ELBEUF-041
+    lat: 49.246639
+    lon: 0.97797
+    service_s: 120
+  - name: ELBEUF-042
+    lat: 49.283144
+    lon: 1.026951
+    service_s: 120
+  - name: ELBEUF-043
+    lat: 49.311423
+    lon: 1.001502
+    service_s: 120
+  - name: ELBEUF-044
+    lat: 49.246703
+    lon: 0.982103
+    service_s: 120
+  - name: ELBEUF-045
+    lat: 49.247895
+    lon: 1.056658
+    service_s: 120
+  - name: ELBEUF-046
+    lat: 49.264731
+    lon: 0.980145
+    service_s: 120
+  - name: ELBEUF-047
+    lat: 49.290025
+    lon: 0.998529
+    service_s: 120
+  - name: ELBEUF-048
+    lat: 49.237107
+    lon: 0.992484
+    service_s: 120
+  - name: ELBEUF-049
+    lat: 49.261942
+    lon: 0.979056
+    service_s: 120
+  - name: ELBEUF-050
+    lat: 49.315559
+    lon: 0.989779
+    service_s: 120
+  - name: ELBEUF-051
+    lat: 49.251641
+    lon: 1.023414
+    service_s: 120
+  - name: ELBEUF-052
+    lat: 49.243184
+    lon: 0.984554
+    service_s: 120
+  - name: ELBEUF-053
+    lat: 49.238151
+    lon: 1.008793
+    service_s: 120
+  - name: ELBEUF-054
+    lat: 49.271154
+    lon: 0.959463
+    service_s: 120
+  - name: ELBEUF-055
+    lat: 49.292915
+    lon: 0.966287
+    service_s: 120
+  - name: ELBEUF-056
+    lat: 49.296555
+    lon: 0.987368
+    service_s: 120
+  - name: ELBEUF-057
+    lat: 49.294703
+    lon: 1.01921
+    service_s: 120
+  - name: ELBEUF-058
+    lat: 49.280588
+    lon: 0.94941
+    service_s: 120
+  - name: ELBEUF-059
+    lat: 49.292487
+    lon: 1.033258
+    service_s: 120
+  - name: ELBEUF-060
+    lat: 49.267148
+    lon: 1.023183
+    service_s: 120
+  - name: ELBEUF-061
+    lat: 49.263513
+    lon: 1.015727
+    service_s: 120
+  - name: ELBEUF-062
+    lat: 49.250907
+    lon: 1.057615
+    service_s: 120
+  - name: ELBEUF-063
+    lat: 49.284106
+    lon: 1.006394
+    service_s: 120
+  - name: ELBEUF-064
+    lat: 49.304465
+    lon: 1.052013
+    service_s: 120
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-VL-12
+  profile: parcels_70x2min
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: PONTAUDEMER-001
+    lat: 49.339616
+    lon: 0.504287
+    service_s: 120
+  - name: PONTAUDEMER-002
+    lat: 49.337743
+    lon: 0.545395
+    service_s: 120
+  - name: PONTAUDEMER-003
+    lat: 49.360739
+    lon: 0.554184
+    service_s: 120
+  - name: PONTAUDEMER-004
+    lat: 49.33308
+    lon: 0.506084
+    service_s: 120
+  - name: PONTAUDEMER-005
+    lat: 49.331805
+    lon: 0.472968
+    service_s: 120
+  - name: PONTAUDEMER-006
+    lat: 49.324496
+    lon: 0.521435
+    service_s: 120
+  - name: PONTAUDEMER-007
+    lat: 49.369224
+    lon: 0.513698
+    service_s: 120
+  - name: PONTAUDEMER-008
+    lat: 49.320735
+    lon: 0.522866
+    service_s: 120
+  - name: PONTAUDEMER-009
+    lat: 49.383004
+    lon: 0.528905
+    service_s: 120
+  - name: PONTAUDEMER-010
+    lat: 49.341146
+    lon: 0.47359
+    service_s: 120
+  - name: PONTAUDEMER-011
+    lat: 49.330853
+    lon: 0.516173
+    service_s: 120
+  - name: PONTAUDEMER-012
+    lat: 49.352458
+    lon: 0.466485
+    service_s: 120
+  - name: PONTAUDEMER-013
+    lat: 49.371514
+    lon: 0.529526
+    service_s: 120
+  - name: PONTAUDEMER-014
+    lat: 49.343818
+    lon: 0.493748
+    service_s: 120
+  - name: PONTAUDEMER-015
+    lat: 49.363114
+    lon: 0.55765
+    service_s: 120
+  - name: PONTAUDEMER-016
+    lat: 49.369866
+    lon: 0.487312
+    service_s: 120
+  - name: PONTAUDEMER-017
+    lat: 49.321458
+    lon: 0.500021
+    service_s: 120
+  - name: PONTAUDEMER-018
+    lat: 49.370039
+    lon: 0.538263
+    service_s: 120
+  - name: PONTAUDEMER-019
+    lat: 49.36123
+    lon: 0.519984
+    service_s: 120
+  - name: PONTAUDEMER-020
+    lat: 49.351112
+    lon: 0.477529
+    service_s: 120
+  - name: PONTAUDEMER-021
+    lat: 49.369698
+    lon: 0.551448
+    service_s: 120
+  - name: PONTAUDEMER-022
+    lat: 49.3237
+    lon: 0.532039
+    service_s: 120
+  - name: PONTAUDEMER-023
+    lat: 49.339623
+    lon: 0.55598
+    service_s: 120
+  - name: PONTAUDEMER-024
+    lat: 49.366114
+    lon: 0.48555
+    service_s: 120
+  - name: PONTAUDEMER-025
+    lat: 49.366481
+    lon: 0.488175
+    service_s: 120
+  - name: PONTAUDEMER-026
+    lat: 49.36248
+    lon: 0.514348
+    service_s: 120
+  - name: PONTAUDEMER-027
+    lat: 49.364066
+    lon: 0.535667
+    service_s: 120
+  - name: PONTAUDEMER-028
+    lat: 49.377435
+    lon: 0.489723
+    service_s: 120
+  - name: PONTAUDEMER-029
+    lat: 49.356062
+    lon: 0.531154
+    service_s: 120
+  - name: PONTAUDEMER-030
+    lat: 49.358545
+    lon: 0.46331
+    service_s: 120
+  - name: PONTAUDEMER-031
+    lat: 49.322401
+    lon: 0.514612
+    service_s: 120
+  - name: PONTAUDEMER-032
+    lat: 49.337736
+    lon: 0.485538
+    service_s: 120
+  - name: PONTAUDEMER-033
+    lat: 49.356811
+    lon: 0.560767
+    service_s: 120
+  - name: PONTAUDEMER-034
+    lat: 49.365602
+    lon: 0.526145
+    service_s: 120
+  - name: PONTAUDEMER-035
+    lat: 49.3324
+    lon: 0.47322
+    service_s: 120
+  - name: PONTAUDEMER-036
+    lat: 49.331425
+    lon: 0.517496
+    service_s: 120
+  - name: PONTAUDEMER-037
+    lat: 49.364356
+    lon: 0.530138
+    service_s: 120
+  - name: PONTAUDEMER-038
+    lat: 49.340421
+    lon: 0.49581
+    service_s: 120
+  - name: PONTAUDEMER-039
+    lat: 49.3632
+    lon: 0.549596
+    service_s: 120
+  - name: PONTAUDEMER-040
+    lat: 49.353033
+    lon: 0.464796
+    service_s: 120
+  - name: PONTAUDEMER-041
+    lat: 49.334853
+    lon: 0.486476
+    service_s: 120
+  - name: PONTAUDEMER-042
+    lat: 49.328005
+    lon: 0.504316
+    service_s: 120
+  - name: PONTAUDEMER-043
+    lat: 49.353178
+    lon: 0.53985
+    service_s: 120
+  - name: PONTAUDEMER-044
+    lat: 49.344423
+    lon: 0.484319
+    service_s: 120
+  - name: PONTAUDEMER-045
+    lat: 49.34033
+    lon: 0.501021
+    service_s: 120
+  - name: PONTAUDEMER-046
+    lat: 49.371681
+    lon: 0.488091
+    service_s: 120
+  - name: PONTAUDEMER-047
+    lat: 49.344025
+    lon: 0.463531
+    service_s: 120
+  - name: PONTAUDEMER-048
+    lat: 49.351573
+    lon: 0.466288
+    service_s: 120
+  - name: PONTAUDEMER-049
+    lat: 49.349575
+    lon: 0.517149
+    service_s: 120
+  - name: PONTAUDEMER-050
+    lat: 49.357576
+    lon: 0.50384
+    service_s: 120
+  - name: PONTAUDEMER-051
+    lat: 49.332464
+    lon: 0.511468
+    service_s: 120
+  - name: PONTAUDEMER-052
+    lat: 49.361273
+    lon: 0.540101
+    service_s: 120
+  - name: PONTAUDEMER-053
+    lat: 49.339226
+    lon: 0.498035
+    service_s: 120
+  - name: PONTAUDEMER-054
+    lat: 49.347673
+    lon: 0.497536
+    service_s: 120
+  - name: PONTAUDEMER-055
+    lat: 49.37474
+    lon: 0.542022
+    service_s: 120
+  - name: PONTAUDEMER-056
+    lat: 49.369944
+    lon: 0.495824
+    service_s: 120
+  - name: PONTAUDEMER-057
+    lat: 49.329414
+    lon: 0.53202
+    service_s: 120
+  - name: PONTAUDEMER-058
+    lat: 49.349656
+    lon: 0.554392
+    service_s: 120
+  - name: PONTAUDEMER-059
+    lat: 49.374181
+    lon: 0.526736
+    service_s: 120
+  - name: PONTAUDEMER-060
+    lat: 49.340935
+    lon: 0.507988
+    service_s: 120
+  - name: PONTAUDEMER-061
+    lat: 49.36052
+    lon: 0.560782
+    service_s: 120
+  - name: PONTAUDEMER-062
+    lat: 49.338407
+    lon: 0.517919
+    service_s: 120
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-VL-13
+  profile: parcels_70x2min
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: LESANDELYS-001
+    lat: 49.257896
+    lon: 1.388499
+    service_s: 120
+  - name: LESANDELYS-002
+    lat: 49.251377
+    lon: 1.364175
+    service_s: 120
+  - name: LESANDELYS-003
+    lat: 49.240538
+    lon: 1.406668
+    service_s: 120
+  - name: LESANDELYS-004
+    lat: 49.231412
+    lon: 1.431998
+    service_s: 120
+  - name: LESANDELYS-005
+    lat: 49.239507
+    lon: 1.406307
+    service_s: 120
+  - name: LESANDELYS-006
+    lat: 49.228181
+    lon: 1.421744
+    service_s: 120
+  - name: LESANDELYS-007
+    lat: 49.259906
+    lon: 1.383673
+    service_s: 120
+  - name: LESANDELYS-008
+    lat: 49.23959
+    lon: 1.448011
+    service_s: 120
+  - name: LESANDELYS-009
+    lat: 49.265222
+    lon: 1.425345
+    service_s: 120
+  - name: LESANDELYS-010
+    lat: 49.268045
+    lon: 1.382332
+    service_s: 120
+  - name: LESANDELYS-011
+    lat: 49.277787
+    lon: 1.407866
+    service_s: 120
+  - name: LESANDELYS-012
+    lat: 49.2507
+    lon: 1.39898
+    service_s: 120
+  - name: LESANDELYS-013
+    lat: 49.245277
+    lon: 1.448965
+    service_s: 120
+  - name: LESANDELYS-014
+    lat: 49.260635
+    lon: 1.406675
+    service_s: 120
+  - name: LESANDELYS-015
+    lat: 49.256119
+    lon: 1.40474
+    service_s: 120
+  - name: LESANDELYS-016
+    lat: 49.252488
+    lon: 1.38489
+    service_s: 120
+  - name: LESANDELYS-017
+    lat: 49.27226
+    lon: 1.436232
+    service_s: 120
+  - name: LESANDELYS-018
+    lat: 49.253778
+    lon: 1.378463
+    service_s: 120
+  - name: LESANDELYS-019
+    lat: 49.229909
+    lon: 1.452721
+    service_s: 120
+  - name: LESANDELYS-020
+    lat: 49.257157
+    lon: 1.373546
+    service_s: 120
+  - name: LESANDELYS-021
+    lat: 49.218341
+    lon: 1.424299
+    service_s: 120
+  - name: LESANDELYS-022
+    lat: 49.238457
+    lon: 1.406759
+    service_s: 120
+  - name: LESANDELYS-023
+    lat: 49.244126
+    lon: 1.37817
+    service_s: 120
+  - name: LESANDELYS-024
+    lat: 49.272171
+    lon: 1.438447
+    service_s: 120
+  - name: LESANDELYS-025
+    lat: 49.240859
+    lon: 1.418622
+    service_s: 120
+  - name: LESANDELYS-026
+    lat: 49.257165
+    lon: 1.371211
+    service_s: 120
+  - name: LESANDELYS-027
+    lat: 49.258669
+    lon: 1.414712
+    service_s: 120
+  - name: LESANDELYS-028
+    lat: 49.267904
+    lon: 1.384469
+    service_s: 120
+  - name: LESANDELYS-029
+    lat: 49.253049
+    lon: 1.465328
+    service_s: 120
+  - name: LESANDELYS-030
+    lat: 49.250339
+    lon: 1.392575
+    service_s: 120
+  - name: LESANDELYS-031
+    lat: 49.253522
+    lon: 1.381653
+    service_s: 120
+  - name: LESANDELYS-032
+    lat: 49.253555
+    lon: 1.42286
+    service_s: 120
+  - name: LESANDELYS-033
+    lat: 49.265934
+    lon: 1.399926
+    service_s: 120
+  - name: LESANDELYS-034
+    lat: 49.24136
+    lon: 1.441061
+    service_s: 120
+  - name: LESANDELYS-035
+    lat: 49.251303
+    lon: 1.416452
+    service_s: 120
+  - name: LESANDELYS-036
+    lat: 49.232686
+    lon: 1.446776
+    service_s: 120
+  - name: LESANDELYS-037
+    lat: 49.233867
+    lon: 1.415939
+    service_s: 120
+  - name: LESANDELYS-038
+    lat: 49.275294
+    lon: 1.423158
+    service_s: 120
+  - name: LESANDELYS-039
+    lat: 49.219716
+    lon: 1.398212
+    service_s: 120
+  - name: LESANDELYS-040
+    lat: 49.280033
+    lon: 1.429875
+    service_s: 120
+  - name: LESANDELYS-041
+    lat: 49.251917
+    lon: 1.431054
+    service_s: 120
+  - name: LESANDELYS-042
+    lat: 49.231518
+    lon: 1.407802
+    service_s: 120
+  - name: LESANDELYS-043
+    lat: 49.212806
+    lon: 1.433322
+    service_s: 120
+  - name: LESANDELYS-044
+    lat: 49.243033
+    lon: 1.466746
+    service_s: 120
+  - name: LESANDELYS-045
+    lat: 49.217687
+    lon: 1.401731
+    service_s: 120
+  - name: LESANDELYS-046
+    lat: 49.271698
+    lon: 1.402797
+    service_s: 120
+  - name: LESANDELYS-047
+    lat: 49.262386
+    lon: 1.429487
+    service_s: 120
+  - name: LESANDELYS-048
+    lat: 49.21731
+    lon: 1.398787
+    service_s: 120
+  - name: LESANDELYS-049
+    lat: 49.257418
+    lon: 1.398252
+    service_s: 120
+  - name: LESANDELYS-050
+    lat: 49.244419
+    lon: 1.438853
+    service_s: 120
+  - name: LESANDELYS-051
+    lat: 49.277747
+    lon: 1.417062
+    service_s: 120
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-VL-14
+  profile: parcels_70x2min
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: BOLBEC-001
+    lat: 49.590412
+    lon: 0.449129
+    service_s: 120
+  - name: BOLBEC-002
+    lat: 49.563886
+    lon: 0.43222
+    service_s: 120
+  - name: BOLBEC-003
+    lat: 49.585861
+    lon: 0.506958
+    service_s: 120
+  - name: BOLBEC-004
+    lat: 49.572955
+    lon: 0.501346
+    service_s: 120
+  - name: BOLBEC-005
+    lat: 49.568654
+    lon: 0.432851
+    service_s: 120
+  - name: BOLBEC-006
+    lat: 49.547952
+    lon: 0.493176
+    service_s: 120
+  - name: BOLBEC-007
+    lat: 49.571505
+    lon: 0.487153
+    service_s: 120
+  - name: BOLBEC-008
+    lat: 49.580901
+    lon: 0.436522
+    service_s: 120
+  - name: BOLBEC-009
+    lat: 49.594794
+    lon: 0.451309
+    service_s: 120
+  - name: BOLBEC-010
+    lat: 49.543661
+    lon: 0.482708
+    service_s: 120
+  - name: BOLBEC-011
+    lat: 49.59621
+    lon: 0.490306
+    service_s: 120
+  - name: BOLBEC-012
+    lat: 49.585877
+    lon: 0.429933
+    service_s: 120
+  - name: BOLBEC-013
+    lat: 49.583382
+    lon: 0.518109
+    service_s: 120
+  - name: BOLBEC-014
+    lat: 49.582213
+    lon: 0.483917
+    service_s: 120
+  - name: BOLBEC-015
+    lat: 49.584614
+    lon: 0.465204
+    service_s: 120
+  - name: BOLBEC-016
+    lat: 49.595114
+    lon: 0.450503
+    service_s: 120
+  - name: BOLBEC-017
+    lat: 49.554031
+    lon: 0.511674
+    service_s: 120
+  - name: BOLBEC-018
+    lat: 49.602327
+    lon: 0.473828
+    service_s: 120
+  - name: BOLBEC-019
+    lat: 49.56502
+    lon: 0.436797
+    service_s: 120
+  - name: BOLBEC-020
+    lat: 49.583666
+    lon: 0.468331
+    service_s: 120
+  - name: BOLBEC-021
+    lat: 49.572623
+    lon: 0.43809
+    service_s: 120
+  - name: BOLBEC-022
+    lat: 49.568303
+    lon: 0.492849
+    service_s: 120
+  - name: BOLBEC-023
+    lat: 49.562482
+    lon: 0.463525
+    service_s: 120
+  - name: BOLBEC-024
+    lat: 49.556391
+    lon: 0.44104
+    service_s: 120
+  - name: BOLBEC-025
+    lat: 49.56161
+    lon: 0.432424
+    service_s: 120
+  - name: BOLBEC-026
+    lat: 49.578137
+    lon: 0.517961
+    service_s: 120
+  - name: BOLBEC-027
+    lat: 49.567722
+    lon: 0.467391
+    service_s: 120
+  - name: BOLBEC-028
+    lat: 49.553308
+    lon: 0.452265
+    service_s: 120
+  - name: BOLBEC-029
+    lat: 49.586975
+    lon: 0.436718
+    service_s: 120
+  - name: BOLBEC-030
+    lat: 49.573314
+    lon: 0.434697
+    service_s: 120
+  - name: BOLBEC-031
+    lat: 49.597472
+    lon: 0.464394
+    service_s: 120
+  - name: BOLBEC-032
+    lat: 49.576336
+    lon: 0.426182
+    service_s: 120
+  - name: BOLBEC-033
+    lat: 49.546749
+    lon: 0.45648
+    service_s: 120
+  - name: BOLBEC-034
+    lat: 49.580697
+    lon: 0.498047
+    service_s: 120
+  - name: BOLBEC-035
+    lat: 49.575891
+    lon: 0.46282
+    service_s: 120
+  - name: BOLBEC-036
+    lat: 49.59427
+    lon: 0.483748
+    service_s: 120
+  - name: BOLBEC-037
+    lat: 49.595941
+    lon: 0.459325
+    service_s: 120
+  - name: BOLBEC-038
+    lat: 49.546107
+    lon: 0.469869
+    service_s: 120
+  - name: BOLBEC-039
+    lat: 49.568441
+    lon: 0.519075
+    service_s: 120
+  - name: BOLBEC-040
+    lat: 49.581379
+    lon: 0.461784
+    service_s: 120
+  - name: BOLBEC-041
+    lat: 49.594679
+    lon: 0.458495
+    service_s: 120
+  - name: BOLBEC-042
+    lat: 49.594647
+    lon: 0.470321
+    service_s: 120
+  - name: BOLBEC-043
+    lat: 49.582073
+    lon: 0.494092
+    service_s: 120
+  - name: BOLBEC-044
+    lat: 49.584429
+    lon: 0.454224
+    service_s: 120
+  - name: BOLBEC-045
+    lat: 49.598012
+    lon: 0.474419
+    service_s: 120
+  - name: BOLBEC-046
+    lat: 49.598014
+    lon: 0.498582
+    service_s: 120
+  - name: BOLBEC-047
+    lat: 49.564443
+    lon: 0.449149
+    service_s: 120
+  - name: BOLBEC-048
+    lat: 49.555229
+    lon: 0.476264
+    service_s: 120
+  - name: BOLBEC-049
+    lat: 49.570921
+    lon: 0.439439
+    service_s: 120
+  - name: BOLBEC-050
+    lat: 49.594013
+    lon: 0.461513
+    service_s: 120
+  - name: BOLBEC-051
+    lat: 49.571362
+    lon: 0.481047
+    service_s: 120
+  - name: BOLBEC-052
+    lat: 49.568289
+    lon: 0.508195
+    service_s: 120
+  - name: BOLBEC-053
+    lat: 49.584805
+    lon: 0.460261
+    service_s: 120
+  - name: BOLBEC-054
+    lat: 49.57323
+    lon: 0.462951
+    service_s: 120
+  - name: BOLBEC-055
+    lat: 49.548306
+    lon: 0.447861
+    service_s: 120
+  - name: BOLBEC-056
+    lat: 49.568002
+    lon: 0.441161
+    service_s: 120
+  - name: BOLBEC-057
+    lat: 49.585341
+    lon: 0.432937
+    service_s: 120
+  - name: BOLBEC-058
+    lat: 49.543345
+    lon: 0.467494
+    service_s: 120
+  - name: BOLBEC-059
+    lat: 49.593796
+    lon: 0.44539
+    service_s: 120
+  - name: BOLBEC-060
+    lat: 49.564375
+    lon: 0.445864
+    service_s: 120
+  - name: BOLBEC-061
+    lat: 49.568383
+    lon: 0.453507
+    service_s: 120
+  - name: BOLBEC-062
+    lat: 49.572769
+    lon: 0.460671
+    service_s: 120
+  - name: BOLBEC-063
+    lat: 49.600394
+    lon: 0.466018
+    service_s: 120
+  - name: BOLBEC-064
+    lat: 49.544272
+    lon: 0.453289
+    service_s: 120
+  - name: BOLBEC-065
+    lat: 49.571286
+    lon: 0.490742
+    service_s: 120
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-VL-15
+  profile: parcels_70x2min
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: BARENTIN-001
+    lat: 49.533087
+    lon: 0.90066
+    service_s: 120
+  - name: BARENTIN-002
+    lat: 49.563412
+    lon: 0.974014
+    service_s: 120
+  - name: BARENTIN-003
+    lat: 49.562486
+    lon: 0.91738
+    service_s: 120
+  - name: BARENTIN-004
+    lat: 49.547776
+    lon: 0.963973
+    service_s: 120
+  - name: BARENTIN-005
+    lat: 49.516863
+    lon: 0.968839
+    service_s: 120
+  - name: BARENTIN-006
+    lat: 49.56722
+    lon: 0.977096
+    service_s: 120
+  - name: BARENTIN-007
+    lat: 49.572603
+    lon: 0.987014
+    service_s: 120
+  - name: BARENTIN-008
+    lat: 49.578075
+    lon: 0.930293
+    service_s: 120
+  - name: BARENTIN-009
+    lat: 49.530676
+    lon: 0.926716
+    service_s: 120
+  - name: BARENTIN-010
+    lat: 49.527352
+    lon: 0.909972
+    service_s: 120
+  - name: BARENTIN-011
+    lat: 49.544411
+    lon: 0.912925
+    service_s: 120
+  - name: BARENTIN-012
+    lat: 49.536141
+    lon: 0.916591
+    service_s: 120
+  - name: BARENTIN-013
+    lat: 49.54863
+    lon: 0.991634
+    service_s: 120
+  - name: BARENTIN-014
+    lat: 49.559377
+    lon: 0.978049
+    service_s: 120
+  - name: BARENTIN-015
+    lat: 49.568072
+    lon: 0.940102
+    service_s: 120
+  - name: BARENTIN-016
+    lat: 49.521039
+    lon: 0.990093
+    service_s: 120
+  - name: BARENTIN-017
+    lat: 49.529405
+    lon: 0.916321
+    service_s: 120
+  - name: BARENTIN-018
+    lat: 49.530373
+    lon: 0.936762
+    service_s: 120
+  - name: BARENTIN-019
+    lat: 49.528932
+    lon: 0.904044
+    service_s: 120
+  - name: BARENTIN-020
+    lat: 49.551532
+    lon: 0.978501
+    service_s: 120
+  - name: BARENTIN-021
+    lat: 49.542155
+    lon: 0.91438
+    service_s: 120
+  - name: BARENTIN-022
+    lat: 49.51531
+    lon: 0.960372
+    service_s: 120
+  - name: BARENTIN-023
+    lat: 49.525696
+    lon: 0.968126
+    service_s: 120
+  - name: BARENTIN-024
+    lat: 49.538074
+    lon: 0.928093
+    service_s: 120
+  - name: BARENTIN-025
+    lat: 49.574518
+    lon: 0.970152
+    service_s: 120
+  - name: BARENTIN-026
+    lat: 49.557864
+    lon: 0.920334
+    service_s: 120
+  - name: BARENTIN-027
+    lat: 49.568524
+    lon: 0.963348
+    service_s: 120
+  - name: BARENTIN-028
+    lat: 49.5293
+    lon: 0.92247
+    service_s: 120
+  - name: BARENTIN-029
+    lat: 49.52553
+    lon: 0.975433
+    service_s: 120
+  - name: BARENTIN-030
+    lat: 49.516003
+    lon: 0.939812
+    service_s: 120
+  - name: BARENTIN-031
+    lat: 49.536167
+    lon: 0.915337
+    service_s: 120
+  - name: BARENTIN-032
+    lat: 49.550951
+    lon: 0.897202
+    service_s: 120
+  - name: BARENTIN-033
+    lat: 49.539965
+    lon: 0.98633
+    service_s: 120
+  - name: BARENTIN-034
+    lat: 49.540876
+    lon: 0.915607
+    service_s: 120
+  - name: BARENTIN-035
+    lat: 49.521847
+    lon: 0.934288
+    service_s: 120
+  - name: BARENTIN-036
+    lat: 49.515106
+    lon: 0.930866
+    service_s: 120
+  - name: BARENTIN-037
+    lat: 49.578655
+    lon: 0.948446
+    service_s: 120
+  - name: BARENTIN-038
+    lat: 49.539259
+    lon: 0.990823
+    service_s: 120
+  - name: BARENTIN-039
+    lat: 49.564429
+    lon: 0.944066
+    service_s: 120
+  - name: BARENTIN-040
+    lat: 49.542053
+    lon: 1.007356
+    service_s: 120
+  - name: BARENTIN-041
+    lat: 49.515162
+    lon: 0.93916
+    service_s: 120
+  - name: BARENTIN-042
+    lat: 49.548098
+    lon: 0.906279
+    service_s: 120
+  - name: BARENTIN-043
+    lat: 49.536602
+    lon: 0.91674
+    service_s: 120
+  - name: BARENTIN-044
+    lat: 49.511203
+    lon: 0.94335
+    service_s: 120
+  - name: BARENTIN-045
+    lat: 49.53726
+    lon: 0.925926
+    service_s: 120
+  - name: BARENTIN-046
+    lat: 49.52958
+    lon: 0.985949
+    service_s: 120
+  - name: BARENTIN-047
+    lat: 49.56499
+    lon: 0.933074
+    service_s: 120
+  - name: BARENTIN-048
+    lat: 49.571592
+    lon: 0.983013
+    service_s: 120
+  - name: BARENTIN-049
+    lat: 49.543921
+    lon: 0.964109
+    service_s: 120
+  - name: BARENTIN-050
+    lat: 49.541275
+    lon: 0.967075
+    service_s: 120
+  - name: BARENTIN-051
+    lat: 49.516381
+    lon: 0.952237
+    service_s: 120
+  - name: BARENTIN-052
+    lat: 49.53107
+    lon: 0.965267
+    service_s: 120
+  - name: BARENTIN-053
+    lat: 49.538765
+    lon: 0.925848
+    service_s: 120
+  - name: BARENTIN-054
+    lat: 49.558079
+    lon: 0.975727
+    service_s: 120
+  - name: BARENTIN-055
+    lat: 49.57741
+    lon: 0.956265
+    service_s: 120
+  - name: BARENTIN-056
+    lat: 49.541376
+    lon: 0.963513
+    service_s: 120
+  - name: BARENTIN-057
+    lat: 49.563274
+    lon: 0.955882
+    service_s: 120
+  - name: BARENTIN-058
+    lat: 49.556135
+    lon: 0.944375
+    service_s: 120
+  - name: BARENTIN-059
+    lat: 49.523175
+    lon: 0.936767
+    service_s: 120
+  - name: BARENTIN-060
+    lat: 49.543002
+    lon: 0.973383
+    service_s: 120
+  - name: BARENTIN-061
+    lat: 49.576285
+    lon: 0.983475
+    service_s: 120
+  - name: BARENTIN-062
+    lat: 49.525857
+    lon: 0.986329
+    service_s: 120
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-FUR-01
+  profile: furniture_sparse_1h
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: FURNITURE-LYONS-001
+    lat: 49.293845
+    lon: 1.475118
+    service_s: 3600
+  - name: FURNITURE-LYONS-002
+    lat: 49.423504
+    lon: 1.557702
+    service_s: 3600
+  - name: FURNITURE-LYONS-003
+    lat: 49.528892
+    lon: 1.491047
+    service_s: 3600
+  - name: FURNITURE-LYONS-004
+    lat: 49.434541
+    lon: 1.684891
+    service_s: 3600
+  - name: FURNITURE-LYONS-005
+    lat: 49.305626
+    lon: 1.558943
+    service_s: 3600
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-FUR-02
+  profile: furniture_sparse_1h
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: FURNITURE-ETRETAT-001
+    lat: 49.677541
+    lon: 0.230476
+    service_s: 3600
+  - name: FURNITURE-ETRETAT-002
+    lat: 49.636474
+    lon: 0.203327
+    service_s: 3600
+  - name: FURNITURE-ETRETAT-003
+    lat: 49.727167
+    lon: 0.340456
+    service_s: 3600
+  - name: FURNITURE-ETRETAT-004
+    lat: 49.666536
+    lon: 0.330477
+    service_s: 3600
+  - name: FURNITURE-ETRETAT-005
+    lat: 49.64311
+    lon: 0.124892
+    service_s: 3600
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-FUR-03
+  profile: furniture_sparse_1h
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: FURNITURE-BERNAY-001
+    lat: 49.189707
+    lon: 0.726524
+    service_s: 3600
+  - name: FURNITURE-BERNAY-002
+    lat: 49.026994
+    lon: 0.634042
+    service_s: 3600
+  - name: FURNITURE-BERNAY-003
+    lat: 49.010725
+    lon: 0.501631
+    service_s: 3600
+  - name: FURNITURE-BERNAY-004
+    lat: 49.10869
+    lon: 0.580397
+    service_s: 3600
+  - name: FURNITURE-BERNAY-005
+    lat: 49.182766
+    lon: 0.646149
+    service_s: 3600
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-FUR-04
+  profile: furniture_sparse_1h
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: FURNITURE-EU-001
+    lat: 50.1119
+    lon: 1.268297
+    service_s: 3600
+  - name: FURNITURE-EU-002
+    lat: 50.089981
+    lon: 1.324855
+    service_s: 3600
+  - name: FURNITURE-EU-003
+    lat: 50.060805
+    lon: 1.267265
+    service_s: 3600
+  - name: FURNITURE-EU-004
+    lat: 50.056628
+    lon: 1.401298
+    service_s: 3600
+  - name: FURNITURE-EU-005
+    lat: 50.106093
+    lon: 1.367692
+    service_s: 3600
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
+- id: CCD-FUR-05
+  profile: furniture_sparse_1h
+  stops:
+  - name: DEPOT-START-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 0
+  - name: FURNITURE-GISORS-001
+    lat: 49.271621
+    lon: 1.326032
+    service_s: 3600
+  - name: FURNITURE-GISORS-002
+    lat: 49.112229
+    lon: 1.293029
+    service_s: 3600
+  - name: FURNITURE-GISORS-003
+    lat: 49.115439
+    lon: 1.306456
+    service_s: 3600
+  - name: FURNITURE-GISORS-004
+    lat: 49.002023
+    lon: 1.369042
+    service_s: 3600
+  - name: FURNITURE-GISORS-005
+    lat: 49.119651
+    lon: 1.511318
+    service_s: 3600
+  - name: ROLL-IN-ROMILLY
+    lat: 49.321
+    lon: 1.291
+    service_s: 60
 road_enrich:
-  stream_url_base: "http://localhost:5002/nearest_road_batch_stream"
+  stream_url_base: http://localhost:5002/nearest_road_batch_stream
   batch_size: 400
   search_radius_m: 120
   fallback_radius_m: 220
@@ -206,23 +3959,19 @@ road_enrich:
   connect_timeout_s: 6.0
   read_timeout_s: 25.0
   request_timeout_s: 30.0
-
 speed_sync:
   keep_start_zero: true
   head_window_s: 2.0
   lat_acc_max_mps2: 2.2
   corner_speed_cap: true
   v_min_mps: 0.3
-
 geo_spike_filter:
   vmax_kmh: 160.0
   hard_jump_m: 500.0
   max_delta_heading_deg: 28
   min_speed_mps: 0.5
-
 stop_smoother:
   window_s: 2.0
-
 legs_retimer:
   speed_by_type:
     motorway: 110
@@ -238,56 +3987,79 @@ legs_retimer:
   use_column_target_speed: true
   min_dt: 0.05
   hz: 10.0
-
-flexis: &flexis_cfg
-  infra_probability_per_km: { residential: 0.05, primary: 0.01 }
-  driver_events_rate_per_hour: { harsh_brake: 2.0, aggressive_accel: 2.0 }
-
+flexis:
+  infra_probability_per_km:
+    residential: 0.05
+    primary: 0.01
+  driver_events_rate_per_hour:
+    harsh_brake: 2.0
+    aggressive_accel: 2.0
 stages:
-  - { class: "core2.stages.legs_plan:LegsPlan" }
-  - { class: "core2.stages.legs_route:LegsRoute" }
-  - { class: "core2.stages.legs_stitch:LegsStitch" }
-  - { class: "core2.stages.road_enricher:RoadEnricher" }
-  - { class: "rs3_plugin_altitude_agpl.plugin:AltitudeStage" }   # altitude
-  - { class: "core2.stages.geo_spike_filter:GeoSpikeFilter" }
-  - { class: "core2.stages.legs_retimer:LegsRetimer" }
-  - { class: "core2.stages.stopwait_injector:StopWaitInjector" }
-  - { class: "core2.stages.stop_smoother:StopSmoother" }
-  - { class: "core2.stages.initial_stop_locker:InitialStopLocker" }
-  - { class: "core2.stages.mid_stops_locker:MidStopsLocker" }
-  - { class: "core2.stages.final_stop_locker:FinalStopLocker" }
-  - { class: "core2.stages.imu_projector:IMUProjector" }
-  - { class: "core2.stages.noise_injector:NoiseInjector" }
-  - { class: "core2.stages.speed_sync:SpeedSync" }
-  - { class: "core2.stages.validators:Validators" }
-
-  - class: "rs3_plugin_fleet.flexis.enricher:FlexisEnricher"
-    config:
-      traffic_profile: *traffic_profile
-      weather_timeline: *weather_timeline
-      force_departure_after_wait: true
-      infra_probability_per_km: { residential: 0.05, primary: 0.01 }
-      driver_events_rate_per_hour: { harsh_brake: 2.0, aggressive_accel: 2.0 }
-      population_density_mode: "osm_heuristic"
-      export_after_enrich: true
-      export_outdir: "data/simulations/default"
-      export_filename: "flexis_final.csv"
-  - class: "rs3_plugin_fleet.utils.flexis_export:Stage"
-    config:
-      export:
-        dir: "data/simulations/ccd_parcels_rouen"   # Note: si tu veux splitter par véhicule, patcher le code pour ajouter vehicle_id
-        filename: "flexis_final"
-        tail_window: 5
-      formats:
-        csv: true
-        parquet: false
-      report:
-        enabled: true
-        filename: "flexis_report.html"
-
-  - { class: "core2.stages.exporter:Exporter" }
-
-
+- class: core2.stages.legs_plan:LegsPlan
+- class: core2.stages.legs_route:LegsRoute
+- class: core2.stages.legs_stitch:LegsStitch
+- class: core2.stages.road_enricher:RoadEnricher
+- class: rs3_plugin_altitude_agpl.plugin:AltitudeStage
+- class: core2.stages.geo_spike_filter:GeoSpikeFilter
+- class: core2.stages.legs_retimer:LegsRetimer
+- class: core2.stages.stopwait_injector:StopWaitInjector
+- class: core2.stages.stop_smoother:StopSmoother
+- class: core2.stages.initial_stop_locker:InitialStopLocker
+- class: core2.stages.mid_stops_locker:MidStopsLocker
+- class: core2.stages.final_stop_locker:FinalStopLocker
+- class: core2.stages.imu_projector:IMUProjector
+- class: core2.stages.noise_injector:NoiseInjector
+- class: core2.stages.speed_sync:SpeedSync
+- class: core2.stages.validators:Validators
+- class: rs3_plugin_fleet.flexis.enricher:FlexisEnricher
+  config:
+    traffic_profile:
+    - from: 08:00
+      to: 09:30
+      level: heavy
+    - from: 09:30
+      to: '16:30'
+      level: moderate
+    - from: '16:30'
+      to: '18:30'
+      level: heavy
+    - from: '18:30'
+      to: '23:00'
+      level: free
+    weather_timeline:
+    - from: 08:00
+      to: '11:00'
+      weather: dry
+    - from: '11:00'
+      to: '13:00'
+      weather: rain_light
+    - from: '13:00'
+      to: '20:00'
+      weather: dry
+    force_departure_after_wait: true
+    infra_probability_per_km:
+      residential: 0.05
+      primary: 0.01
+    driver_events_rate_per_hour:
+      harsh_brake: 2.0
+      aggressive_accel: 2.0
+    population_density_mode: osm_heuristic
+    export_after_enrich: true
+    export_outdir: data/simulations/default
+    export_filename: flexis_final.csv
+- class: rs3_plugin_fleet.utils.flexis_export:Stage
+  config:
+    export:
+      dir: data/simulations/ccd_parcels_rouen
+      filename: flexis_final
+      tail_window: 5
+    formats:
+      csv: true
+      parquet: false
+    report:
+      enabled: true
+      filename: flexis_report.html
+- class: core2.stages.exporter:Exporter
 exporter:
   report:
     enabled: true
@@ -297,12 +4069,10 @@ exporter:
     charts_sample_hz: 2.0
     break_on_nan: true
     max_segment_gap_s: 1.0
-
-
 validators:
   cadence:
     expected_hz: 10.0
-    tolerance_ppm: 10000   # ±1,0 %
+    tolerance_ppm: 10000
     enabled: true
   dynamics:
     turn_radius_min_m: 10

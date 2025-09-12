@@ -1,0 +1,615 @@
+client: Coin-Coin Delivery
+
+contracts:
+  symbols:
+    load_config:      "core.config_loader:load_config"
+    pipeline_builder: "core2.pipeline:build_pipeline"      # ← RS3 core2
+    pipeline_class:   "core2.pipeline:PipelineSimulator"   # ← fallback si pas de builder
+
+osrm: { profile: driving, base_url: "http://localhost:5003" }
+
+profiles:
+  parcels_70x2min:
+    hz: 10
+    osrm: { profile: driving, base_url: "http://localhost:5003" }
+    stops_per_vehicle: 70
+    dwell_seconds: { mean: 120, jitter: 0.2 }
+    speed_targets: { residential: 30, primary: 50, motorway: 110 }
+    traffic_profile: &traffic_profile
+      - { from: "08:00", to: "09:30", level: heavy }
+      - { from: "09:30", to: "16:30", level: moderate }
+      - { from: "16:30", to: "18:30", level: heavy }
+      - { from: "18:30", to: "23:00", level: free }
+    weather_timeline: &weather_timeline
+      - { from: "08:00", to: "11:00", weather: dry }
+      - { from: "11:00", to: "13:00", weather: rain_light }
+      - { from: "13:00", to: "20:00", weather: dry }
+
+  furniture_30x20min:   # (non utilisé pour ce run)
+    hz: 10
+    osrm: { profile: driving, base_url: "http://localhost:5003" }
+    stops_per_vehicle: 30
+    dwell_seconds: { mean: 1200, jitter: 0.1 }
+
+  furniture_sparse_1h:
+    hz: 10
+    osrm: { profile: driving, base_url: "http://localhost:5003" }
+    stops_per_vehicle: 10
+    dwell_seconds: { mean: 3600, jitter: 0.1 }
+
+vehicles:
+  - id: "CCD-VL-01"
+    profile: parcels_70x2min
+    stops:
+      # START depot — Romilly-sur-Andelle
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      - { name: "ROU-027", lat: 49.4430, lon: 1.1230, service_s: 120 }
+      - { name: "ROU-054", lat: 49.4429, lon: 1.1203, service_s: 120 }
+      - { name: "ROU-043", lat: 49.4434, lon: 1.1195, service_s: 120 }
+      - { name: "ROU-013", lat: 49.4420, lon: 1.1183, service_s: 120 }
+      - { name: "ROU-029", lat: 49.4418, lon: 1.1162, service_s: 120 }
+      - { name: "ROU-045", lat: 49.4410, lon: 1.1148, service_s: 120 }
+      - { name: "ROU-061", lat: 49.4412, lon: 1.1128, service_s: 120 }
+      - { name: "ROU-036", lat: 49.4413, lon: 1.1117, service_s: 120 }
+      - { name: "ROU-052", lat: 49.4408, lon: 1.1099, service_s: 120 }
+      - { name: "ROU-016", lat: 49.4411, lon: 1.1090, service_s: 120 }
+      - { name: "ROU-024", lat: 49.4402, lon: 1.1131, service_s: 120 }
+      - { name: "ROU-070", lat: 49.4425, lon: 1.1139, service_s: 120 }
+      - { name: "ROU-008", lat: 49.4432, lon: 1.1147, service_s: 120 }
+      - { name: "ROU-059", lat: 49.4431, lon: 1.1154, service_s: 120 }
+      - { name: "ROU-066", lat: 49.4481, lon: 1.1142, service_s: 120 }
+      - { name: "ROU-032", lat: 49.4470, lon: 1.1130, service_s: 120 }
+      - { name: "ROU-057", lat: 49.4464, lon: 1.1112, service_s: 120 }
+      - { name: "ROU-040", lat: 49.4440, lon: 1.1080, service_s: 120 }
+      - { name: "ROU-063", lat: 49.4441, lon: 1.1070, service_s: 120 }
+      - { name: "ROU-025", lat: 49.4474, lon: 1.1061, service_s: 120 }
+      - { name: "ROU-055", lat: 49.4486, lon: 1.1050, service_s: 120 }
+      - { name: "ROU-038", lat: 49.4426, lon: 1.1049, service_s: 120 }
+      - { name: "ROU-015", lat: 49.4469, lon: 1.1035, service_s: 120 }
+      - { name: "ROU-051", lat: 49.4436, lon: 1.1029, service_s: 120 }
+      - { name: "ROU-020", lat: 49.4437, lon: 1.1019, service_s: 120 }
+      - { name: "ROU-034", lat: 49.4465, lon: 1.1010, service_s: 120 }
+      - { name: "ROU-069", lat: 49.4457, lon: 1.1022, service_s: 120 }
+      - { name: "ROU-065", lat: 49.4423, lon: 1.1001, service_s: 120 }
+      - { name: "ROU-044", lat: 49.4472, lon: 1.0998, service_s: 120 }
+      - { name: "ROU-028", lat: 49.4456, lon: 1.0990, service_s: 120 }
+      - { name: "ROU-049", lat: 49.4422, lon: 1.0988, service_s: 120 }
+      - { name: "ROU-031", lat: 49.4409, lon: 1.0977, service_s: 120 }
+      - { name: "ROU-060", lat: 49.4475, lon: 1.0970, service_s: 120 }
+      - { name: "ROU-009", lat: 49.4480, lon: 1.0971, service_s: 120 }
+      - { name: "ROU-056", lat: 49.4416, lon: 1.0961, service_s: 120 }
+      - { name: "ROU-067", lat: 49.4438, lon: 1.0950, service_s: 120 }
+      - { name: "ROU-022", lat: 49.4485, lon: 1.0952, service_s: 120 }
+      - { name: "ROU-042", lat: 49.4467, lon: 1.0940, service_s: 120 }
+      - { name: "ROU-053", lat: 49.4459, lon: 1.0930, service_s: 120 }
+      - { name: "ROU-064", lat: 49.4468, lon: 1.0921, service_s: 120 }
+      - { name: "ROU-037", lat: 49.4479, lon: 1.0910, service_s: 120 }
+      - { name: "ROU-048", lat: 49.4461, lon: 1.0901, service_s: 120 }
+      - { name: "ROU-011", lat: 49.4451, lon: 1.0906, service_s: 120 }
+      - { name: "ROU-058", lat: 49.4447, lon: 1.0899, service_s: 120 }
+      - { name: "ROU-033", lat: 49.4439, lon: 1.0891, service_s: 120 }
+      - { name: "ROU-041", lat: 49.4404, lon: 1.0877, service_s: 120 }
+      - { name: "ROU-046", lat: 49.4453, lon: 1.0869, service_s: 120 }
+      - { name: "ROU-021", lat: 49.4424, lon: 1.0862, service_s: 120 }
+      - { name: "ROU-014", lat: 49.4442, lon: 1.0849, service_s: 120 }
+      - { name: "ROU-030", lat: 49.4482, lon: 1.0839, service_s: 120 }
+      - { name: "ROU-003", lat: 49.4471, lon: 1.0882, service_s: 120 }
+      - { name: "ROU-062", lat: 49.4455, lon: 1.0844, service_s: 120 }
+      - { name: "ROU-010", lat: 49.4407, lon: 1.1041, service_s: 120 }
+      - { name: "ROU-006", lat: 49.4415, lon: 1.1008, service_s: 120 }
+      - { name: "ROU-001", lat: 49.4428, lon: 1.0955, service_s: 120 }
+      - { name: "ROU-047", lat: 49.4444, lon: 1.1125, service_s: 120 }
+      - { name: "ROU-032", lat: 49.4470, lon: 1.1130, service_s: 120 }
+      - { name: "ROU-012", lat: 49.4476, lon: 1.1159, service_s: 120 }
+      - { name: "ROU-050", lat: 49.4477, lon: 1.1161, service_s: 120 }
+      - { name: "ROU-039", lat: 49.4488, lon: 1.1175, service_s: 120 }
+      - { name: "ROU-023", lat: 49.4460, lon: 1.1188, service_s: 120 }
+      - { name: "ROU-035", lat: 49.4450, lon: 1.1169, service_s: 120 }
+      - { name: "ROU-005", lat: 49.4458, lon: 1.1210, service_s: 120 }
+      - { name: "ROU-068", lat: 49.4406, lon: 1.1171, service_s: 120 }
+      - { name: "ROU-019", lat: 49.4489, lon: 1.1101, service_s: 120 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-VL-02"
+    profile: parcels_70x2min
+    stops:
+      # START depot — Romilly-sur-Andelle
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+
+      # Le Havre — ~70 livraisons
+      - { name: "HAV-001", lat: 49.5032, lon: 0.1031, service_s: 120 }
+      - { name: "HAV-002", lat: 49.5065, lon: 0.1104, service_s: 120 }
+      - { name: "HAV-003", lat: 49.4987, lon: 0.0958, service_s: 120 }
+      - { name: "HAV-004", lat: 49.4942, lon: 0.1159, service_s: 120 }
+      - { name: "HAV-005", lat: 49.5003, lon: 0.1271, service_s: 120 }
+      - { name: "HAV-006", lat: 49.5078, lon: 0.1216, service_s: 120 }
+      - { name: "HAV-007", lat: 49.5121, lon: 0.1122, service_s: 120 }
+      - { name: "HAV-008", lat: 49.5089, lon: 0.0984, service_s: 120 }
+      - { name: "HAV-009", lat: 49.5015, lon: 0.0869, service_s: 120 }
+      - { name: "HAV-010", lat: 49.4958, lon: 0.0807, service_s: 120 }
+      - { name: "HAV-011", lat: 49.4912, lon: 0.0923, service_s: 120 }
+      - { name: "HAV-012", lat: 49.4898, lon: 0.1066, service_s: 120 }
+      - { name: "HAV-013", lat: 49.4877, lon: 0.1202, service_s: 120 }
+      - { name: "HAV-014", lat: 49.4935, lon: 0.1324, service_s: 120 }
+      - { name: "HAV-015", lat: 49.5001, lon: 0.1408, service_s: 120 }
+      - { name: "HAV-016", lat: 49.5069, lon: 0.1479, service_s: 120 }
+      - { name: "HAV-017", lat: 49.5128, lon: 0.1387, service_s: 120 }
+      - { name: "HAV-018", lat: 49.5173, lon: 0.1266, service_s: 120 }
+      - { name: "HAV-019", lat: 49.5191, lon: 0.1115, service_s: 120 }
+      - { name: "HAV-020", lat: 49.5152, lon: 0.0988, service_s: 120 }
+      - { name: "HAV-021", lat: 49.5097, lon: 0.0870, service_s: 120 }
+      - { name: "HAV-022", lat: 49.5022, lon: 0.0779, service_s: 120 }
+      - { name: "HAV-023", lat: 49.4940, lon: 0.0706, service_s: 120 }
+      - { name: "HAV-024", lat: 49.4865, lon: 0.0785, service_s: 120 }
+      - { name: "HAV-025", lat: 49.4829, lon: 0.0915, service_s: 120 }
+      - { name: "HAV-026", lat: 49.4821, lon: 0.1069, service_s: 120 }
+      - { name: "HAV-027", lat: 49.4814, lon: 0.1217, service_s: 120 }
+      - { name: "HAV-028", lat: 49.4856, lon: 0.1344, service_s: 120 }
+      - { name: "HAV-029", lat: 49.4910, lon: 0.1457, service_s: 120 }
+      - { name: "HAV-030", lat: 49.4981, lon: 0.1520, service_s: 120 }
+      - { name: "HAV-031", lat: 49.5050, lon: 0.1569, service_s: 120 }
+      - { name: "HAV-032", lat: 49.5129, lon: 0.1540, service_s: 120 }
+      - { name: "HAV-033", lat: 49.5188, lon: 0.1445, service_s: 120 }
+      - { name: "HAV-034", lat: 49.5220, lon: 0.1311, service_s: 120 }
+      - { name: "HAV-035", lat: 49.5229, lon: 0.1154, service_s: 120 }
+      - { name: "HAV-036", lat: 49.5203, lon: 0.1004, service_s: 120 }
+      - { name: "HAV-037", lat: 49.5156, lon: 0.0882, service_s: 120 }
+      - { name: "HAV-038", lat: 49.5088, lon: 0.0786, service_s: 120 }
+      - { name: "HAV-039", lat: 49.5009, lon: 0.0712, service_s: 120 }
+      - { name: "HAV-040", lat: 49.4926, lon: 0.0658, service_s: 120 }
+      - { name: "HAV-041", lat: 49.4851, lon: 0.0719, service_s: 120 }
+      - { name: "HAV-042", lat: 49.4798, lon: 0.0838, service_s: 120 }
+      - { name: "HAV-043", lat: 49.4776, lon: 0.0979, service_s: 120 }
+      - { name: "HAV-044", lat: 49.4770, lon: 0.1131, service_s: 120 }
+      - { name: "HAV-045", lat: 49.4797, lon: 0.1276, service_s: 120 }
+      - { name: "HAV-046", lat: 49.4847, lon: 0.1395, service_s: 120 }
+      - { name: "HAV-047", lat: 49.4914, lon: 0.1494, service_s: 120 }
+      - { name: "HAV-048", lat: 49.4990, lon: 0.1568, service_s: 120 }
+      - { name: "HAV-049", lat: 49.5067, lon: 0.1615, service_s: 120 }
+      - { name: "HAV-050", lat: 49.5144, lon: 0.1602, service_s: 120 }
+      - { name: "HAV-051", lat: 49.5209, lon: 0.1530, service_s: 120 }
+      - { name: "HAV-052", lat: 49.5253, lon: 0.1410, service_s: 120 }
+      - { name: "HAV-053", lat: 49.5274, lon: 0.1267, service_s: 120 }
+      - { name: "HAV-054", lat: 49.5271, lon: 0.1116, service_s: 120 }
+      - { name: "HAV-055", lat: 49.5239, lon: 0.0979, service_s: 120 }
+      - { name: "HAV-056", lat: 49.5189, lon: 0.0865, service_s: 120 }
+      - { name: "HAV-057", lat: 49.5122, lon: 0.0771, service_s: 120 }
+      - { name: "HAV-058", lat: 49.5047, lon: 0.0704, service_s: 120 }
+      - { name: "HAV-059", lat: 49.4966, lon: 0.0654, service_s: 120 }
+      - { name: "HAV-060", lat: 49.4883, lon: 0.0638, service_s: 120 }
+      - { name: "HAV-061", lat: 49.4810, lon: 0.0701, service_s: 120 }
+      - { name: "HAV-062", lat: 49.4760, lon: 0.0815, service_s: 120 }
+      - { name: "HAV-063", lat: 49.4737, lon: 0.0952, service_s: 120 }
+      - { name: "HAV-064", lat: 49.4735, lon: 0.1106, service_s: 120 }
+      - { name: "HAV-065", lat: 49.4763, lon: 0.1254, service_s: 120 }
+      - { name: "HAV-066", lat: 49.4816, lon: 0.1372, service_s: 120 }
+      - { name: "HAV-067", lat: 49.4887, lon: 0.1478, service_s: 120 }
+      - { name: "HAV-068", lat: 49.4969, lon: 0.1565, service_s: 120 }
+      - { name: "HAV-069", lat: 49.5050, lon: 0.1620, service_s: 120 }
+      - { name: "HAV-070", lat: 49.5131, lon: 0.1623, service_s: 120 }
+
+      # END depot — retour Romilly-sur-Andelle
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-VL-03"
+    profile: parcels_70x2min
+    stops:
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      # Dieppe area — ~55 livraisons
+      - { name: "DIE-001", lat: 49.9250, lon: 1.0830, service_s: 120 }
+      - { name: "DIE-002", lat: 49.9180, lon: 1.0740, service_s: 120 }
+      - { name: "DIE-003", lat: 49.9300, lon: 1.0700, service_s: 120 }
+      - { name: "DIE-004", lat: 49.9220, lon: 1.0600, service_s: 120 }
+      - { name: "DIE-005", lat: 49.9150, lon: 1.0900, service_s: 120 }
+      - { name: "DIE-006", lat: 49.9260, lon: 1.0850, service_s: 120 }
+      - { name: "DIE-007", lat: 49.9270, lon: 1.0770, service_s: 120 }
+      - { name: "DIE-008", lat: 49.9290, lon: 1.0890, service_s: 120 }
+      - { name: "DIE-009", lat: 49.9210, lon: 1.0920, service_s: 120 }
+      - { name: "DIE-010", lat: 49.9175, lon: 1.0825, service_s: 120 }
+      - { name: "DIE-011", lat: 49.9205, lon: 1.0735, service_s: 120 }
+      - { name: "DIE-012", lat: 49.9240, lon: 1.0705, service_s: 120 }
+      - { name: "DIE-013", lat: 49.9280, lon: 1.0650, service_s: 120 }
+      - { name: "DIE-014", lat: 49.9320, lon: 1.0720, service_s: 120 }
+      - { name: "DIE-015", lat: 49.9340, lon: 1.0800, service_s: 120 }
+      - { name: "DIE-016", lat: 49.9355, lon: 1.0900, service_s: 120 }
+      - { name: "DIE-017", lat: 49.9335, lon: 1.0950, service_s: 120 }
+      - { name: "DIE-018", lat: 49.9295, lon: 1.0980, service_s: 120 }
+      - { name: "DIE-019", lat: 49.9255, lon: 1.0960, service_s: 120 }
+      - { name: "DIE-020", lat: 49.9215, lon: 1.0950, service_s: 120 }
+      - { name: "DIE-021", lat: 49.9185, lon: 1.0910, service_s: 120 }
+      - { name: "DIE-022", lat: 49.9160, lon: 1.0855, service_s: 120 }
+      - { name: "DIE-023", lat: 49.9140, lon: 1.0785, service_s: 120 }
+      - { name: "DIE-024", lat: 49.9155, lon: 1.0715, service_s: 120 }
+      - { name: "DIE-025", lat: 49.9195, lon: 1.0665, service_s: 120 }
+      - { name: "DIE-026", lat: 49.9235, lon: 1.0635, service_s: 120 }
+      - { name: "DIE-027", lat: 49.9275, lon: 1.0620, service_s: 120 }
+      - { name: "DIE-028", lat: 49.9315, lon: 1.0630, service_s: 120 }
+      - { name: "DIE-029", lat: 49.9350, lon: 1.0660, service_s: 120 }
+      - { name: "DIE-030", lat: 49.9370, lon: 1.0710, service_s: 120 }
+      - { name: "DIE-031", lat: 49.9380, lon: 1.0770, service_s: 120 }
+      - { name: "DIE-032", lat: 49.9375, lon: 1.0830, service_s: 120 }
+      - { name: "DIE-033", lat: 49.9360, lon: 1.0885, service_s: 120 }
+      - { name: "DIE-034", lat: 49.9340, lon: 1.0925, service_s: 120 }
+      - { name: "DIE-035", lat: 49.9310, lon: 1.0955, service_s: 120 }
+      - { name: "DIE-036", lat: 49.9270, lon: 1.0970, service_s: 120 }
+      - { name: "DIE-037", lat: 49.9230, lon: 1.0975, service_s: 120 }
+      - { name: "DIE-038", lat: 49.9190, lon: 1.0960, service_s: 120 }
+      - { name: "DIE-039", lat: 49.9160, lon: 1.0925, service_s: 120 }
+      - { name: "DIE-040", lat: 49.9145, lon: 1.0870, service_s: 120 }
+      - { name: "DIE-041", lat: 49.9135, lon: 1.0805, service_s: 120 }
+      - { name: "DIE-042", lat: 49.9140, lon: 1.0745, service_s: 120 }
+      - { name: "DIE-043", lat: 49.9165, lon: 1.0695, service_s: 120 }
+      - { name: "DIE-044", lat: 49.9200, lon: 1.0660, service_s: 120 }
+      - { name: "DIE-045", lat: 49.9240, lon: 1.0645, service_s: 120 }
+      - { name: "DIE-046", lat: 49.9280, lon: 1.0640, service_s: 120 }
+      - { name: "DIE-047", lat: 49.9320, lon: 1.0655, service_s: 120 }
+      - { name: "DIE-048", lat: 49.9355, lon: 1.0690, service_s: 120 }
+      - { name: "DIE-049", lat: 49.9365, lon: 1.0745, service_s: 120 }
+      - { name: "DIE-050", lat: 49.9350, lon: 1.0805, service_s: 120 }
+      - { name: "DIE-051", lat: 49.9325, lon: 1.0850, service_s: 120 }
+      - { name: "DIE-052", lat: 49.9295, lon: 1.0875, service_s: 120 }
+      - { name: "DIE-053", lat: 49.9255, lon: 1.0885, service_s: 120 }
+      - { name: "DIE-054", lat: 49.9215, lon: 1.0870, service_s: 120 }
+      - { name: "DIE-055", lat: 49.9185, lon: 1.0835, service_s: 120 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-VL-04"
+    profile: parcels_70x2min
+    stops:
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      # Évreux area — ~55 livraisons
+      - { name: "EVR-001", lat: 49.0280, lon: 1.1500, service_s: 120 }
+      - { name: "EVR-002", lat: 49.0200, lon: 1.1600, service_s: 120 }
+      - { name: "EVR-003", lat: 49.0320, lon: 1.1650, service_s: 120 }
+      - { name: "EVR-004", lat: 49.0180, lon: 1.1450, service_s: 120 }
+      - { name: "EVR-005", lat: 49.0240, lon: 1.1300, service_s: 120 }
+      - { name: "EVR-006", lat: 49.0300, lon: 1.1520, service_s: 120 }
+      - { name: "EVR-007", lat: 49.0330, lon: 1.1580, service_s: 120 }
+      - { name: "EVR-008", lat: 49.0270, lon: 1.1630, service_s: 120 }
+      - { name: "EVR-009", lat: 49.0220, lon: 1.1660, service_s: 120 }
+      - { name: "EVR-010", lat: 49.0185, lon: 1.1620, service_s: 120 }
+      - { name: "EVR-011", lat: 49.0160, lon: 1.1560, service_s: 120 }
+      - { name: "EVR-012", lat: 49.0165, lon: 1.1490, service_s: 120 }
+      - { name: "EVR-013", lat: 49.0190, lon: 1.1430, service_s: 120 }
+      - { name: "EVR-014", lat: 49.0230, lon: 1.1390, service_s: 120 }
+      - { name: "EVR-015", lat: 49.0270, lon: 1.1370, service_s: 120 }
+      - { name: "EVR-016", lat: 49.0310, lon: 1.1375, service_s: 120 }
+      - { name: "EVR-017", lat: 49.0340, lon: 1.1415, service_s: 120 }
+      - { name: "EVR-018", lat: 49.0360, lon: 1.1475, service_s: 120 }
+      - { name: "EVR-019", lat: 49.0365, lon: 1.1545, service_s: 120 }
+      - { name: "EVR-020", lat: 49.0350, lon: 1.1605, service_s: 120 }
+      - { name: "EVR-021", lat: 49.0325, lon: 1.1650, service_s: 120 }
+      - { name: "EVR-022", lat: 49.0285, lon: 1.1675, service_s: 120 }
+      - { name: "EVR-023", lat: 49.0245, lon: 1.1670, service_s: 120 }
+      - { name: "EVR-024", lat: 49.0205, lon: 1.1645, service_s: 120 }
+      - { name: "EVR-025", lat: 49.0175, lon: 1.1600, service_s: 120 }
+      - { name: "EVR-026", lat: 49.0160, lon: 1.1540, service_s: 120 }
+      - { name: "EVR-027", lat: 49.0165, lon: 1.1480, service_s: 120 }
+      - { name: "EVR-028", lat: 49.0185, lon: 1.1435, service_s: 120 }
+      - { name: "EVR-029", lat: 49.0215, lon: 1.1405, service_s: 120 }
+      - { name: "EVR-030", lat: 49.0255, lon: 1.1395, service_s: 120 }
+      - { name: "EVR-031", lat: 49.0295, lon: 1.1400, service_s: 120 }
+      - { name: "EVR-032", lat: 49.0330, lon: 1.1425, service_s: 120 }
+      - { name: "EVR-033", lat: 49.0355, lon: 1.1465, service_s: 120 }
+      - { name: "EVR-034", lat: 49.0365, lon: 1.1520, service_s: 120 }
+      - { name: "EVR-035", lat: 49.0355, lon: 1.1575, service_s: 120 }
+      - { name: "EVR-036", lat: 49.0335, lon: 1.1620, service_s: 120 }
+      - { name: "EVR-037", lat: 49.0305, lon: 1.1650, service_s: 120 }
+      - { name: "EVR-038", lat: 49.0265, lon: 1.1660, service_s: 120 }
+      - { name: "EVR-039", lat: 49.0225, lon: 1.1650, service_s: 120 }
+      - { name: "EVR-040", lat: 49.0195, lon: 1.1615, service_s: 120 }
+      - { name: "EVR-041", lat: 49.0175, lon: 1.1565, service_s: 120 }
+      - { name: "EVR-042", lat: 49.0170, lon: 1.1505, service_s: 120 }
+      - { name: "EVR-043", lat: 49.0185, lon: 1.1455, service_s: 120 }
+      - { name: "EVR-044", lat: 49.0210, lon: 1.1420, service_s: 120 }
+      - { name: "EVR-045", lat: 49.0245, lon: 1.1405, service_s: 120 }
+      - { name: "EVR-046", lat: 49.0285, lon: 1.1405, service_s: 120 }
+      - { name: "EVR-047", lat: 49.0320, lon: 1.1425, service_s: 120 }
+      - { name: "EVR-048", lat: 49.0345, lon: 1.1460, service_s: 120 }
+      - { name: "EVR-049", lat: 49.0355, lon: 1.1510, service_s: 120 }
+      - { name: "EVR-050", lat: 49.0345, lon: 1.1560, service_s: 120 }
+      - { name: "EVR-051", lat: 49.0325, lon: 1.1595, service_s: 120 }
+      - { name: "EVR-052", lat: 49.0295, lon: 1.1615, service_s: 120 }
+      - { name: "EVR-053", lat: 49.0260, lon: 1.1615, service_s: 120 }
+      - { name: "EVR-054", lat: 49.0225, lon: 1.1600, service_s: 120 }
+      - { name: "EVR-055", lat: 49.0195, lon: 1.1565, service_s: 120 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-VL-05"
+    profile: parcels_70x2min
+    stops:
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      # Vernon area
+      - { name: "VER-001", lat: 49.0950, lon: 1.4860, service_s: 120 }
+      - { name: "VER-002", lat: 49.0900, lon: 1.4800, service_s: 120 }
+      - { name: "VER-003", lat: 49.1000, lon: 1.4750, service_s: 120 }
+      - { name: "VER-004", lat: 49.0880, lon: 1.4950, service_s: 120 }
+      - { name: "VER-005", lat: 49.0920, lon: 1.4650, service_s: 120 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-VL-06"
+    profile: parcels_70x2min
+    stops:
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      # Fécamp area
+      - { name: "FEC-001", lat: 49.7570, lon: 0.3750, service_s: 120 }
+      - { name: "FEC-002", lat: 49.7520, lon: 0.3680, service_s: 120 }
+      - { name: "FEC-003", lat: 49.7610, lon: 0.3600, service_s: 120 }
+      - { name: "FEC-004", lat: 49.7480, lon: 0.3840, service_s: 120 }
+      - { name: "FEC-005", lat: 49.7550, lon: 0.3920, service_s: 120 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-VL-07"
+    profile: parcels_70x2min
+    stops:
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      # Le Tréport area
+      - { name: "TRP-001", lat: 50.0590, lon: 1.3800, service_s: 120 }
+      - { name: "TRP-002", lat: 50.0530, lon: 1.3720, service_s: 120 }
+      - { name: "TRP-003", lat: 50.0630, lon: 1.3700, service_s: 120 }
+      - { name: "TRP-004", lat: 50.0560, lon: 1.3850, service_s: 120 }
+      - { name: "TRP-005", lat: 50.0500, lon: 1.3900, service_s: 120 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-VL-08"
+    profile: parcels_70x2min
+    stops:
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      # Yvetot area
+      - { name: "YVE-001", lat: 49.6170, lon: 0.7540, service_s: 120 }
+      - { name: "YVE-002", lat: 49.6120, lon: 0.7460, service_s: 120 }
+      - { name: "YVE-003", lat: 49.6200, lon: 0.7400, service_s: 120 }
+      - { name: "YVE-004", lat: 49.6240, lon: 0.7600, service_s: 120 }
+      - { name: "YVE-005", lat: 49.6100, lon: 0.7700, service_s: 120 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-VL-09"
+    profile: parcels_70x2min
+    stops:
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      # Louviers area
+      - { name: "LOU-001", lat: 49.2150, lon: 1.1710, service_s: 120 }
+      - { name: "LOU-002", lat: 49.2100, lon: 1.1800, service_s: 120 }
+      - { name: "LOU-003", lat: 49.2200, lon: 1.1650, service_s: 120 }
+      - { name: "LOU-004", lat: 49.2050, lon: 1.1600, service_s: 120 }
+      - { name: "LOU-005", lat: 49.2250, lon: 1.1900, service_s: 120 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-VL-10"
+    profile: parcels_70x2min
+    stops:
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      # Gisors area
+      - { name: "GIS-001", lat: 49.2820, lon: 1.7800, service_s: 120 }
+      - { name: "GIS-002", lat: 49.2750, lon: 1.7700, service_s: 120 }
+      - { name: "GIS-003", lat: 49.2880, lon: 1.7650, service_s: 120 }
+      - { name: "GIS-004", lat: 49.2900, lon: 1.7900, service_s: 120 }
+      - { name: "GIS-005", lat: 49.2700, lon: 1.7850, service_s: 120 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-VL-11"
+    profile: parcels_70x2min
+    stops:
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      # Elbeuf area
+      - { name: "ELB-001", lat: 49.2760, lon: 1.0110, service_s: 120 }
+      - { name: "ELB-002", lat: 49.2700, lon: 1.0000, service_s: 120 }
+      - { name: "ELB-003", lat: 49.2800, lon: 1.0200, service_s: 120 }
+      - { name: "ELB-004", lat: 49.2850, lon: 1.0050, service_s: 120 }
+      - { name: "ELB-005", lat: 49.2680, lon: 1.0150, service_s: 120 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-VL-12"
+    profile: parcels_70x2min
+    stops:
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      # Pont-Audemer area
+      - { name: "PAU-001", lat: 49.3530, lon: 0.5120, service_s: 120 }
+      - { name: "PAU-002", lat: 49.3480, lon: 0.5050, service_s: 120 }
+      - { name: "PAU-003", lat: 49.3600, lon: 0.5200, service_s: 120 }
+      - { name: "PAU-004", lat: 49.3450, lon: 0.5300, service_s: 120 }
+      - { name: "PAU-005", lat: 49.3520, lon: 0.5400, service_s: 120 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-VL-13"
+    profile: parcels_70x2min
+    stops:
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      # Les Andelys area
+      - { name: "AND-001", lat: 49.2460, lon: 1.4130, service_s: 120 }
+      - { name: "AND-002", lat: 49.2400, lon: 1.4000, service_s: 120 }
+      - { name: "AND-003", lat: 49.2520, lon: 1.4050, service_s: 120 }
+      - { name: "AND-004", lat: 49.2480, lon: 1.4200, service_s: 120 }
+      - { name: "AND-005", lat: 49.2350, lon: 1.4150, service_s: 120 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-VL-14"
+    profile: parcels_70x2min
+    stops:
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      # Bolbec area
+      - { name: "BOL-001", lat: 49.5730, lon: 0.4740, service_s: 120 }
+      - { name: "BOL-002", lat: 49.5680, lon: 0.4660, service_s: 120 }
+      - { name: "BOL-003", lat: 49.5800, lon: 0.4600, service_s: 120 }
+      - { name: "BOL-004", lat: 49.5720, lon: 0.4500, service_s: 120 }
+      - { name: "BOL-005", lat: 49.5650, lon: 0.4820, service_s: 120 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-VL-15"
+    profile: parcels_70x2min
+    stops:
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      # Barentin area
+      - { name: "BAR-001", lat: 49.5460, lon: 0.9530, service_s: 120 }
+      - { name: "BAR-002", lat: 49.5400, lon: 0.9450, service_s: 120 }
+      - { name: "BAR-003", lat: 49.5520, lon: 0.9600, service_s: 120 }
+      - { name: "BAR-004", lat: 49.5480, lon: 0.9700, service_s: 120 }
+      - { name: "BAR-005", lat: 49.5350, lon: 0.9550, service_s: 120 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  # Furniture (sparse, 1h stops)
+  - id: "CCD-FUR-01"
+    profile: furniture_sparse_1h
+    stops:
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      - { name: "LYO-001", lat: 49.4010, lon: 1.4690, service_s: 3600 }
+      - { name: "FOR-002", lat: 49.3900, lon: 1.4500, service_s: 3600 }
+      - { name: "FOR-003", lat: 49.4100, lon: 1.4800, service_s: 3600 }
+      - { name: "FOR-004", lat: 49.3950, lon: 1.5000, service_s: 3600 }
+      - { name: "FOR-005", lat: 49.3880, lon: 1.4650, service_s: 3600 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-FUR-02"
+    profile: furniture_sparse_1h
+    stops:
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      - { name: "ETR-001", lat: 49.7060, lon: 0.2040, service_s: 3600 }
+      - { name: "ETR-002", lat: 49.7200, lon: 0.1900, service_s: 3600 }
+      - { name: "ETR-003", lat: 49.6950, lon: 0.2100, service_s: 3600 }
+      - { name: "ETR-004", lat: 49.7100, lon: 0.2250, service_s: 3600 }
+      - { name: "ETR-005", lat: 49.7020, lon: 0.2120, service_s: 3600 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-FUR-03"
+    profile: furniture_sparse_1h
+    stops:
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      - { name: "BER-001", lat: 49.0930, lon: 0.5950, service_s: 3600 }
+      - { name: "BER-002", lat: 49.1100, lon: 0.6100, service_s: 3600 }
+      - { name: "BER-003", lat: 49.0800, lon: 0.5800, service_s: 3600 }
+      - { name: "BER-004", lat: 49.1000, lon: 0.5700, service_s: 3600 }
+      - { name: "BER-005", lat: 49.0850, lon: 0.5900, service_s: 3600 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-FUR-04"
+    profile: furniture_sparse_1h
+    stops:
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      - { name: "EU-001", lat: 50.0470, lon: 1.4180, service_s: 3600 }
+      - { name: "EU-002", lat: 50.0600, lon: 1.4300, service_s: 3600 }
+      - { name: "EU-003", lat: 50.0350, lon: 1.4000, service_s: 3600 }
+      - { name: "EU-004", lat: 50.0500, lon: 1.3900, service_s: 3600 }
+      - { name: "EU-005", lat: 50.0420, lon: 1.4050, service_s: 3600 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+  - id: "CCD-FUR-05"
+    profile: furniture_sparse_1h
+    stops:
+      - { name: "DEPOT-START-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 0 }
+      - { name: "GAI-001", lat: 49.1640, lon: 1.3380, service_s: 3600 }
+      - { name: "GAI-002", lat: 49.1500, lon: 1.3200, service_s: 3600 }
+      - { name: "GAI-003", lat: 49.1700, lon: 1.3600, service_s: 3600 }
+      - { name: "GAI-004", lat: 49.1800, lon: 1.3450, service_s: 3600 }
+      - { name: "GAI-005", lat: 49.1720, lon: 1.3300, service_s: 3600 }
+      - { name: "ROLL-IN-ROMILLY", lat: 49.3210, lon: 1.2910, service_s: 60 }
+
+road_enrich:
+  stream_url_base: "http://localhost:5002/nearest_road_batch_stream"
+  batch_size: 400
+  search_radius_m: 120
+  fallback_radius_m: 220
+  max_retries: 3
+  connect_timeout_s: 6.0
+  read_timeout_s: 25.0
+  request_timeout_s: 30.0
+
+speed_sync:
+  keep_start_zero: true
+  head_window_s: 2.0
+  lat_acc_max_mps2: 2.2
+  corner_speed_cap: true
+  v_min_mps: 0.3
+
+geo_spike_filter:
+  vmax_kmh: 160.0
+  hard_jump_m: 500.0
+  max_delta_heading_deg: 28
+  min_speed_mps: 0.5
+
+stop_smoother:
+  window_s: 2.0
+
+legs_retimer:
+  speed_by_type:
+    motorway: 110
+    trunk: 100
+    primary: 70
+    secondary: 50
+    tertiary: 40
+    residential: 30
+    service: 20
+    unclassified: 50
+    unknown: 50
+  default_kmh: 50
+  use_column_target_speed: true
+  min_dt: 0.05
+  hz: 10.0
+
+flexis: &flexis_cfg
+  infra_probability_per_km: { residential: 0.05, primary: 0.01 }
+  driver_events_rate_per_hour: { harsh_brake: 2.0, aggressive_accel: 2.0 }
+
+stages:
+  - { class: "core2.stages.legs_plan:LegsPlan" }
+  - { class: "core2.stages.legs_route:LegsRoute" }
+  - { class: "core2.stages.legs_stitch:LegsStitch" }
+  - { class: "core2.stages.road_enricher:RoadEnricher" }
+  - { class: "rs3_plugin_altitude_agpl.plugin:AltitudeStage" }   # altitude
+  - { class: "core2.stages.geo_spike_filter:GeoSpikeFilter" }
+  - { class: "core2.stages.legs_retimer:LegsRetimer" }
+  - { class: "core2.stages.stopwait_injector:StopWaitInjector" }
+  - { class: "core2.stages.stop_smoother:StopSmoother" }
+  - { class: "core2.stages.initial_stop_locker:InitialStopLocker" }
+  - { class: "core2.stages.mid_stops_locker:MidStopsLocker" }
+  - { class: "core2.stages.final_stop_locker:FinalStopLocker" }
+  - { class: "core2.stages.imu_projector:IMUProjector" }
+  - { class: "core2.stages.noise_injector:NoiseInjector" }
+  - { class: "core2.stages.speed_sync:SpeedSync" }
+  - { class: "core2.stages.validators:Validators" }
+
+  - class: "rs3_plugin_fleet.flexis.enricher:FlexisEnricher"
+    config:
+      traffic_profile: *traffic_profile
+      weather_timeline: *weather_timeline
+      force_departure_after_wait: true
+      infra_probability_per_km: { residential: 0.05, primary: 0.01 }
+      driver_events_rate_per_hour: { harsh_brake: 2.0, aggressive_accel: 2.0 }
+      population_density_mode: "osm_heuristic"
+      export_after_enrich: true
+      export_outdir: "data/simulations/default"
+      export_filename: "flexis_final.csv"
+  - class: "rs3_plugin_fleet.utils.flexis_export:Stage"
+    config:
+      export:
+        dir: "data/simulations/ccd_parcels_rouen"   # Note: si tu veux splitter par véhicule, patcher le code pour ajouter vehicle_id
+        filename: "flexis_final"
+        tail_window: 5
+      formats:
+        csv: true
+        parquet: false
+      report:
+        enabled: true
+        filename: "flexis_report.html"
+
+  - { class: "core2.stages.exporter:Exporter" }
+
+
+exporter:
+  report:
+    enabled: true
+    standalone_map: true
+    inline_data: true
+    map_sample_hz: 20.0
+    charts_sample_hz: 2.0
+    break_on_nan: true
+    max_segment_gap_s: 1.0
+
+
+validators:
+  cadence:
+    expected_hz: 10.0
+    tolerance_ppm: 10000   # ±1,0 %
+    enabled: true
+  dynamics:
+    turn_radius_min_m: 10
+    lateral_consistency_tol: 0.2

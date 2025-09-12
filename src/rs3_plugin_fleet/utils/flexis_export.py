@@ -273,6 +273,86 @@ def _resolve_vehicle_id(ctx, df: pd.DataFrame | None = None) -> Optional[str]:
     return None
 
 # ------------------------------------------------------------
+# Client/project slug helper
+# ------------------------------------------------------------
+def _resolve_client_slug(ctx) -> str:
+    """Find the client/project name from ctx/cfg and return a sanitized slug.
+    Tries several conventional locations in ctx and ctx.config/cfg.
+    Also tries to infer from a config/yaml path if present.
+    Defaults to 'default' if not found.
+    """
+    cand = None
+
+    # 1) Search in ctx.cfg / ctx.config common keys
+    for attr in ("cfg", "config"):
+        cfg = getattr(ctx, attr, None)
+        if isinstance(cfg, dict):
+            # direct keys commonly used to store a human label
+            for key in ("client", "project", "customer", "title", "name", "label"):
+                v = cfg.get(key)
+                if isinstance(v, str) and v.strip():
+                    cand = v.strip()
+                    break
+            if cand:
+                break
+            # nested common containers
+            for parent in ("meta", "info", "output", "sim", "dataset"):
+                sub = cfg.get(parent) or {}
+                if isinstance(sub, dict):
+                    for key in ("client", "project", "customer", "title", "name", "label"):
+                        v = sub.get(key)
+                        if isinstance(v, str) and v.strip():
+                            cand = v.strip()
+                            break
+                if cand:
+                    break
+            if cand:
+                break
+
+    # 2) fallbacks from ctx attributes
+    if not cand:
+        for attr in ("client", "project", "title", "name", "run_name"):
+            v = getattr(ctx, attr, None)
+            if isinstance(v, str) and v.strip():
+                cand = v.strip()
+                break
+
+    # 3) last chance: try to infer from config path if present on ctx/cfg
+    if not cand:
+        # Try various attributes that may hold the yaml path
+        paths = []
+        for attr in ("config_path", "cfg_path", "yaml_path", "config_file", "cfg_file"):
+            v = getattr(ctx, attr, None)
+            if isinstance(v, str) and v.strip():
+                paths.append(v)
+        for attr in ("cfg", "config"):
+            cfg = getattr(ctx, attr, None)
+            if isinstance(cfg, dict):
+                for k in ("config_path", "cfg_path", "yaml_path", "config_file", "cfg_file", "__cfg_path__", "__config_path__"):
+                    v = cfg.get(k)
+                    if isinstance(v, str) and v.strip():
+                        paths.append(v)
+        # derive name from the stem of the first existing path-like string
+        for p in paths:
+            try:
+                stem = Path(p).stem  # e.g. coin-coin-delivery
+                if stem:
+                    cand = stem.replace("_", " ").replace("-", " ")
+                    break
+            except Exception:
+                continue
+
+    if not cand:
+        # as a very last resort, use ctx.name/run_name if present
+        for attr in ("name", "run_name"):
+            v = getattr(ctx, attr, None)
+            if isinstance(v, str) and v.strip():
+                cand = v.strip()
+                break
+
+    return _sanitize_segment(cand) if cand else "default"
+
+# ------------------------------------------------------------
 # Helpers flexis fallback/merge
 # ------------------------------------------------------------
 
@@ -491,22 +571,30 @@ class Stage:
         # 2) trim de la queue "à l'arrêt"
         df = _trim_tail_idle(df, self.cfg.tail_window_s)
 
-        # 3) Écriture alignée avec le core/rapports
-        out_dir_str = _resolve_outdir(ctx, self.cfg.out_dir)
-        run_name = _resolve_run_name(ctx, self.cfg.filename)
+        # 3) Écriture dans le répertoire client demandé :
+        #    data/simulations/<client_slug>/<vehicle_id>.<ext>
+        client_slug = _resolve_client_slug(ctx)
+        out_dir_path = Path("data") / "simulations" / client_slug
 
-        # Multi-véhicule : si un identifiant véhicule est disponible, écrire dans un sous-dossier
-        vid = _resolve_vehicle_id(ctx, df)
-        out_dir_path = Path(out_dir_str)
-        if vid:
-            out_dir_path = out_dir_path / vid
-        out_dir = out_dir_path
+        # Determine vehicle id (required for explicit file naming)
+        vid = _resolve_vehicle_id(ctx, df) or _resolve_run_name(ctx, "run")
 
-        # Évite le double suffixe si run_name termine déjà par '-flexis'
-        out_basename = run_name if run_name.lower().endswith("-flexis") else f"{run_name}-flexis"
-        out_path = (out_dir if isinstance(out_dir, Path) else Path(out_dir)) / f"{out_basename}.csv"
+        # Extension policy: take from configured filename, else .csv
+        cfg_ext = Path(self.cfg.filename).suffix
+        ext = cfg_ext if cfg_ext else ".csv"
+
+        out_path = out_dir_path / f"{vid}{ext}"
         self.last_out_path = str(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Also prepare a mirror path into the core outdir (simulated_YYYYmmdd_HHMMSS) if present
+        core_outdir = _resolve_outdir(ctx, default_dir=str(out_dir_path))
+        try:
+            core_outdir_path = Path(core_outdir)
+        except Exception:
+            core_outdir_path = out_dir_path
+        mirror_path = core_outdir_path / f"{vid}{ext}"
+        mirror_path.parent.mkdir(parents=True, exist_ok=True)
 
         # --- Build an explicit export dataframe that guarantees all flexis_* columns are kept ---
         base_cols = [
@@ -564,10 +652,10 @@ class Stage:
                     df[col] = pd.to_numeric(s, errors="coerce")
 
         # Debug: afficher les valeurs des colonnes flexis_*
-        print("[DEBUG] Colonnes flexis_* avant export:")
+        logger.debug("[DEBUG] Colonnes flexis_* avant export:")
         for col in required_flexis:
             if col in df.columns:
-                print(f"  {col}: {df[col].head()}")
+                logger.debug(f"  {col}: {df[col].head()}")
 
         # Collect ALL columns, ensuring flexis_* are included
         all_cols = list(df.columns)
@@ -602,14 +690,14 @@ class Stage:
                 pass
 
         # DEBUG: preview just before writing
-        print("[DEBUG] Colonnes flexis_* juste avant écriture (post-merge):")
+        logger.debug("[DEBUG] Colonnes flexis_* juste avant écriture (post-merge):")
         for _col in [c for c in df_out.columns if isinstance(c, str) and c.startswith("flexis_")]:
             try:
                 _s = pd.Series(df_out[_col])
-                print(f"  {_col}: non_na={int(_s.notna().sum())}, unique={int(_s.nunique(dropna=True))}")
-                print(_s.head().to_string())
+                logger.debug(f"  {_col}: non_na={int(_s.notna().sum())}, unique={int(_s.nunique(dropna=True))}")
+                logger.debug(_s.head().to_string())
             except Exception as __e:
-                print(f"  {_col}: preview failed: {__e}")
+                logger.debug(f"  {_col}: preview failed: {__e}")
 
         # Normalize types for a few columns
         if "flexis_night" in df_out.columns:
@@ -650,11 +738,25 @@ class Stage:
             wrote_paths.append(str(pq_path))
 
         if want_csv:
-            csv_path = out_path if out_path.suffix.lower() == ".csv" else out_path.with_suffix(".csv")
+            # Respect explicit extension even if it is not .csv (e.g. .csb as requested)
+            csv_path = out_path
             df_out.to_csv(csv_path, index=False)
             wrote_paths.append(str(csv_path))
+            # Mirror next to core HTML/Map reports, for immediate discoverability
+            try:
+                df_out.to_csv(mirror_path, index=False)
+                wrote_paths.append(str(mirror_path))
+            except Exception as _e:
+                logger.debug(f"[FlexisExporter] Mirror write skipped: {type(_e).__name__}: {_e}")
 
-        print(f"[FlexisExporter] Wrote {', '.join(wrote_paths)}")
+        logger.info(f"[FlexisExporter] Wrote {', '.join(wrote_paths)}")
+        # Force a visible stdout line (some runners filter logging levels)
+        try:
+            print("[FlexisExporter] Wrote:")
+            for p in wrote_paths:
+                print(" -", p)
+        except Exception:
+            pass
 
         # 4) remettre dans le ctx (chaînage éventuel)
         try:
