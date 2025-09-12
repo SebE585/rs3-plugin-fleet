@@ -292,6 +292,7 @@ class PreLegsBootstrap:
 # ----------------------------
 # Instanciation des stages & build
 # ----------------------------
+
 def instantiate_stage(stage: Union[str, Dict[str, Any]]) -> Any:
     if isinstance(stage, str):
         if ":" not in stage:
@@ -312,6 +313,56 @@ def instantiate_stage(stage: Union[str, Dict[str, Any]]) -> Any:
             return stage_class()
 
     raise ValueError(f"Stage mal formé: {stage!r}")
+
+# ----------------------------
+# Normalisation défensive du contenu pipeline.stages
+# ----------------------------
+
+def _normalize_pipeline_stages(pipeline) -> None:
+    """Garantit que pipeline.stages est une liste plate d'instances avec .run.
+    - Dé-neste le cas [[s1, s2, ...]] -> [s1, s2, ...]
+    - Aplati toute sous-liste résiduelle
+    - Instancie les specs (dict/str) via instantiate_stage
+    """
+    try:
+        stages = getattr(pipeline, "stages", [])
+
+        # Cas: [ [s1, s2, ...] ]
+        if isinstance(stages, list) and len(stages) == 1 and isinstance(stages[0], list):
+            stages = stages[0]
+
+        # Aplatit récursivement les listes imbriquées
+        flat: List[Any] = []
+        def _add(x):
+            if isinstance(x, list):
+                for y in x:
+                    _add(y)
+            else:
+                flat.append(x)
+        _add(stages)
+
+        # Instancie les specs dict/str → objets avec .run
+        new_stages: List[Any] = []
+        changed = False
+        for s in flat:
+            if hasattr(s, "run"):
+                new_stages.append(s)
+                continue
+            if isinstance(s, (dict, str)):
+                try:
+                    new_stages.append(instantiate_stage(s))
+                    changed = True
+                    continue
+                except Exception:
+                    pass
+            # autre type: garder tel quel
+            new_stages.append(s)
+
+        # Réécrit pipeline.stages si nécessaire
+        if changed or flat is not getattr(pipeline, "stages", None):
+            setattr(pipeline, "stages", new_stages)
+    except Exception as _e:
+        logger.debug(f"[adapter] Normalisation des stages ignorée: {_e}")
 
 
 def build_pipeline_and_ctx(cfg: Dict[str, Any], sim_cfg: Dict[str, Any], config_path: str) -> Tuple[Any, Any]:
@@ -384,6 +435,7 @@ def build_pipeline_and_ctx(cfg: Dict[str, Any], sim_cfg: Dict[str, Any], config_
 
     # Toujours passer une *config* au builder
     pipeline = build_func(pipeline_cfg)
+    _normalize_pipeline_stages(pipeline)
 
     # Si le builder a renvoyé des dicts pour stages, on tente une reconstruction
     try:
@@ -422,6 +474,7 @@ def build_pipeline_and_ctx(cfg: Dict[str, Any], sim_cfg: Dict[str, Any], config_
                 )
 
             pipeline = rebuilt
+            _normalize_pipeline_stages(pipeline)
     except Exception:
         raise
 

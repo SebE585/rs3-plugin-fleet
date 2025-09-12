@@ -1,9 +1,8 @@
 client: Coin-Coin Delivery
 contracts:
   symbols:
-    load_config: core.config_loader:load_config
-    pipeline_builder: core2.pipeline:build_pipeline
-    pipeline_class: core2.pipeline:PipelineSimulator
+    pipeline_builder: rs3_contracts.core2_generic:build_pipeline
+    context_builder:  rs3_contracts.core2_generic:build_context
 osrm:
   profile: driving
   base_url: http://localhost:5003
