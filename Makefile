@@ -1,4 +1,4 @@
-.PHONY: setup lint test fmt run simulate
+.PHONY: setup lint test fmt run simulate simulate-vl1 simulate-veh
 
 setup:
 	python -m venv .venv && . .venv/bin/activate && pip install -U pip
@@ -21,3 +21,16 @@ simulate:
 		test -d .venv && . .venv/bin/activate || true; \
 		export PYTHONPATH=$$PWD:$$PWD/../RoadSimulator3; \
 		python -m rs3_plugin_fleet.runner.run_fleet --config src/rs3_plugin_fleet/config/coin-coin-delivery.yaml
+
+simulate-vl1:
+	@set -e; \
+		test -d .venv && . .venv/bin/activate || true; \
+		export PYTHONPATH=$$PWD:$$PWD/../RoadSimulator3; \
+		python -m rs3_plugin_fleet.runner.run_fleet --config src/rs3_plugin_fleet/config/coin-coin-delivery.yaml --vehicle-id CCD-VL-01
+
+# Generic: make simulate-veh VEH=CCD-VL-01
+simulate-veh:
+	@set -e; \
+		test -d .venv && . .venv/bin/activate || true; \
+		export PYTHONPATH=$$PWD:$$PWD/../RoadSimulator3; \
+		python -m rs3_plugin_fleet.runner.run_fleet --config src/rs3_plugin_fleet/config/coin-coin-delivery.yaml --vehicle-id $${VEH}

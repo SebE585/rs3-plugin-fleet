@@ -9,9 +9,30 @@ import numpy as np
 import pandas as pd
 import traceback
 import re
+import shutil
+import sys
+import inspect
 from rs3_plugin_fleet.flexis.enricher import FlexisEnricher, _extract_schedules_from_ctx
 
+
 logger = logging.getLogger(__name__)
+
+MODULE_VERSION = "flexis_export/2025-09-17-1"
+
+def _log_banner_start(ctx, sim_outdir: Path):
+    try:
+        fmt_env = (os.getenv("RS3_FLEXIS_FMT", "").strip().lower() or "").strip()
+        mirror_env = (os.getenv("RS3_FLEXIS_MIRROR", "0").strip().lower() or "0")
+        logger.warning(
+            "[FlexisExporter] ▶ start | ver=%s | file=%s | RS3_FLEXIS_FMT=%s | RS3_FLEXIS_MIRROR=%s | outdir=%s",
+            MODULE_VERSION,
+            __file__,
+            fmt_env or "<unset>",
+            mirror_env,
+            str(sim_outdir),
+        )
+    except Exception:
+        pass
 
 # ------------------------------------------------------------
 # Helpers temps absolu/relatif
@@ -456,7 +477,54 @@ def _ensure_flexis_columns(df: pd.DataFrame, ctx) -> pd.DataFrame:
             "weather_timeline": wt or [],
             "export_after_enrich": False,
         })
-        fx_df = fx.apply(df.copy(), context=ctx)
+        # Call FlexisEnricher in a version-agnostic way (compat with older/newer APIs)
+        _fx_in = df.copy()
+        fx_df = None
+        try:
+            if hasattr(fx, "apply"):
+                fx_df = fx.apply(_fx_in, context=ctx)
+            elif hasattr(fx, "process"):
+                # some implementations use process(df, ctx)
+                fx_df = fx.process(_fx_in, ctx)
+            elif hasattr(fx, "run"):
+                # Inspect signature to decide whether to pass context
+                try:
+                    sig = inspect.signature(fx.run)
+                    param_names = [p.name for p in sig.parameters.values()]
+                    # Methods have implicit 'self'
+                    if len(param_names) == 1:
+                        # run(self) -> unlikely, but call without df/context
+                        fx_df = fx.run()
+                    elif len(param_names) == 2:
+                        # run(self, df)
+                        fx_df = fx.run(_fx_in)
+                    else:
+                        # 3+ parameters: try common names for context
+                        if "context" in param_names:
+                            fx_df = fx.run(_fx_in, context=ctx)
+                        elif "ctx" in param_names:
+                            fx_df = fx.run(_fx_in, ctx)
+                        else:
+                            # Fallback: try positional with df only first
+                            try:
+                                fx_df = fx.run(_fx_in)
+                            except TypeError:
+                                # As a last resort, pass ctx positionally
+                                fx_df = fx.run(_fx_in, ctx)
+                except Exception:
+                    # If signature introspection fails, try safest call (df only), then with ctx
+                    try:
+                        fx_df = fx.run(_fx_in)
+                    except TypeError:
+                        fx_df = fx.run(_fx_in, ctx)
+            elif callable(fx):
+                fx_df = fx(_fx_in, context=ctx)
+        except Exception as _fx_e:
+            # re-raise to be handled by the outer try/except which logs and continues export
+            raise _fx_e
+
+        if fx_df is None:
+            raise AttributeError("FlexisEnricher call failed: no compatible method found")
 
         # Fusion non destructive + comptage des comblements
         for col in flexis_cols:
@@ -547,9 +615,28 @@ class Stage:
         tail_window = float(export.get("tail_window", 5))
         self.cfg = Config(out_dir=out_dir, filename=filename, tail_window_s=tail_window)
         self.last_out_path: Optional[str] = None
+        self._last_wrote_paths: Optional[list[str]] = None
 
     def process(self, df: pd.DataFrame, ctx) -> pd.DataFrame:
         df = df.copy()
+
+        # Resolve outdir very early so we can drop probe files even if logging is muted
+        sim_outdir = Path(_resolve_outdir(ctx, default_dir=str(Path("data") / "simulations")))
+        flexis_dir = sim_outdir / "flexis"
+        try:
+            flexis_dir.mkdir(parents=True, exist_ok=True)
+            # Write a whoami probe so we can confirm which module/class executed
+            whoami_path = flexis_dir / "__whoami.txt"
+            whoami_payload = (
+                f"MODULE_VERSION={MODULE_VERSION}\n"
+                f"__file__={__file__}\n"
+                f"class={self.__class__.__module__}.{self.__class__.__name__}\n"
+                f"id={id(self)}\n"
+                f"RS3_FLEXIS_FMT={os.getenv('RS3_FLEXIS_FMT', '<unset>')}\n"
+            )
+            whoami_path.write_text(whoami_payload)
+        except Exception as _e:
+            logger.debug(f"[FlexisExporter] whoami probe skipped: {type(_e).__name__}: {_e}")
 
         # 1) Recyclage si déjà présent, sinon calcul robuste
         if "time_utc" in df.columns:
@@ -571,30 +658,30 @@ class Stage:
         # 2) trim de la queue "à l'arrêt"
         df = _trim_tail_idle(df, self.cfg.tail_window_s)
 
-        # 3) Écriture dans le répertoire client demandé :
-        #    data/simulations/<client_slug>/<vehicle_id>.<ext>
-        client_slug = _resolve_client_slug(ctx)
-        out_dir_path = Path("data") / "simulations" / client_slug
-
-        # Determine vehicle id (required for explicit file naming)
-        vid = _resolve_vehicle_id(ctx, df) or _resolve_run_name(ctx, "run")
-
-        # Extension policy: take from configured filename, else .csv
-        cfg_ext = Path(self.cfg.filename).suffix
-        ext = cfg_ext if cfg_ext else ".csv"
-
-        out_path = out_dir_path / f"{vid}{ext}"
-        self.last_out_path = str(out_path)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Also prepare a mirror path into the core outdir (simulated_YYYYmmdd_HHMMSS) if present
-        core_outdir = _resolve_outdir(ctx, default_dir=str(out_dir_path))
+        # 3) Écriture directement dans le dossier de la simulation
+        #    …/simulated_YYYYmmdd_HHMMSS/flexis/flexis_<vehicle>_<sim_id>.<ext>
+        _log_banner_start(ctx, sim_outdir)
+        # Emit an early, guaranteed-visible breadcrumb into core2.pipeline
         try:
-            core_outdir_path = Path(core_outdir)
+            logging.getLogger("core2.pipeline").warning("[FlexisExporter] enter process: outdir=%s", str(sim_outdir))
         except Exception:
-            core_outdir_path = out_dir_path
-        mirror_path = core_outdir_path / f"{vid}{ext}"
-        mirror_path.parent.mkdir(parents=True, exist_ok=True)
+            pass
+
+        # Vehicle ID + sim_id robustes
+        vid = _resolve_vehicle_id(ctx, df) or _resolve_run_name(ctx, "run")
+        sim_id = getattr(ctx, "sim_id", None)
+        if not sim_id:
+            # à défaut, utilise le nom du dossier de sortie comme identifiant lisible
+            sim_id = sim_outdir.name
+
+        base_name = f"flexis_{vid}_{sim_id}"
+
+        # Extensions de sortie selon la config
+        pq_path = flexis_dir / f"{base_name}.parquet"
+        csv_path = flexis_dir / f"{base_name}.csv"
+
+        # Enregistrer le chemin principal pour les logs/retour
+        self.last_out_path = str(csv_path if self.cfg.write_csv else pq_path)
 
         # --- Build an explicit export dataframe that guarantees all flexis_* columns are kept ---
         base_cols = [
@@ -606,7 +693,24 @@ class Stage:
         # Ensure a fixed canonical Flexis schema is present (create empty defaults when missing)
 
         # 1bis) Enrichissement Flexis si colonnes manquantes ou vides (fallback non destructif)
-        df = _ensure_flexis_columns(df, ctx)
+        try:
+            df = _ensure_flexis_columns(df, ctx)
+            # Disk probe: confirms we reached after _ensure_flexis_columns()
+            try:
+                (flexis_dir / "__probe_after_ensure.txt").write_text("after_ensure\n")
+            except Exception as _e:
+                logger.debug(f"[FlexisExporter] probe after ensure skipped: {type(_e).__name__}: {_e}")
+            logger.warning("[FlexisExporter] TRACE A: after _ensure_flexis_columns")
+        except Exception as e:
+            # Ne bloque pas l'export si le fallback plante : log + probe d'échec et on continue
+            try:
+                (flexis_dir / "__probe_after_ensure.txt").write_text(f"ensure_failed: {type(e).__name__}: {e}\n")
+            except Exception:
+                pass
+            logging.getLogger("core2.pipeline").error(
+                "[FlexisExporter] _ensure_flexis_columns crashed: %s\n%s", e, traceback.format_exc()
+            )
+            # On continue avec df inchangé
 
         required_flexis = [
             "flexis_road_type",
@@ -674,6 +778,7 @@ class Stage:
                 cols_order.append(c)
 
         df_out = df[cols_order].copy()
+        logger.warning("[FlexisExporter] TRACE B: after df_out build shape=%s", str(df_out.shape))
 
         # Preserve existing flexis_* from upstream stages; only fill blanks in df_out
         for _col in [c for c in df.columns if isinstance(c, str) and c.startswith("flexis_")]:
@@ -727,36 +832,236 @@ class Stage:
                 else:
                     df_out[col] = pd.to_numeric(df_out[col], errors="coerce")
 
+        # === CHECKPOINT: before write section ===
+        try:
+            logger.warning("[FlexisExporter] checkpoint A: df_out size rows=%d cols=%d", len(df_out), df_out.shape[1])
+        except Exception:
+            pass
+        try:
+            print("[FlexisExporter] checkpoint A: df_out shape:", len(df_out), "x", df_out.shape[1])
+        except Exception:
+            pass
+        try:
+            sys.stdout.flush()
+        except Exception:
+            pass
         # write the curated dataframe according to config flags
         wrote_paths = []
-        want_parquet = bool(self.cfg.write_parquet) or str(out_path).lower().endswith(".parquet")
-        want_csv = bool(self.cfg.write_csv) or not want_parquet
 
+        # 1) Allow env override of formats: RS3_FLEXIS_FMT in {parquet,csv,both}
+        fmt_env = (os.getenv("RS3_FLEXIS_FMT", "").strip().lower() or "").strip()
+        if fmt_env in ("parquet", "csv", "both"):
+            want_parquet = fmt_env in ("parquet", "both")
+            want_csv = fmt_env in ("csv", "both")
+        else:
+            want_parquet = bool(self.cfg.write_parquet)
+            want_csv = bool(self.cfg.write_csv)
+        logger.warning("[FlexisExporter] TRACE C: format decision csv=%s parquet=%s", want_csv, want_parquet)
+
+        # Log chosen formats and target paths for visibility
+        try:
+            logger.warning(
+                "[FlexisExporter] formats → csv=%s parquet=%s | targets: csv=%s parquet=%s",
+                want_csv,
+                want_parquet,
+                str(csv_path),
+                str(pq_path),
+            )
+        except Exception:
+            pass
+        try:
+            print("[FlexisExporter] chosen formats:", "csv=", want_csv, "parquet=", want_parquet)
+            print("[FlexisExporter] targets:", "csv=", str(csv_path), "parquet=", str(pq_path))
+        except Exception:
+            pass
+        try:
+            sys.stdout.flush()
+        except Exception:
+            pass
+
+        # 2) Safety net: if none selected, default to CSV
+        if not want_parquet and not want_csv:
+            logger.warning("[FlexisExporter] No format selected by config; defaulting to CSV.")
+            want_csv = True
+
+        # 3) Perform writes
         if want_parquet:
-            pq_path = out_path.with_suffix(".parquet")
-            df_out.to_parquet(pq_path, index=False)
-            wrote_paths.append(str(pq_path))
+            try:
+                df_out.to_parquet(pq_path, index=False)
+                if pq_path.exists():
+                    wrote_paths.append(str(pq_path))
+                else:
+                    logger.warning(f"[FlexisExporter] Parquet write returned but file missing: {pq_path}")
+            except Exception as e:
+                logger.error(f"[FlexisExporter] Failed to write parquet: {type(e).__name__}: {e}")
 
         if want_csv:
-            # Respect explicit extension even if it is not .csv (e.g. .csb as requested)
-            csv_path = out_path
-            df_out.to_csv(csv_path, index=False)
-            wrote_paths.append(str(csv_path))
-            # Mirror next to core HTML/Map reports, for immediate discoverability
             try:
-                df_out.to_csv(mirror_path, index=False)
-                wrote_paths.append(str(mirror_path))
-            except Exception as _e:
-                logger.debug(f"[FlexisExporter] Mirror write skipped: {type(_e).__name__}: {_e}")
+                df_out.to_csv(csv_path, index=False)
+                if csv_path.exists():
+                    wrote_paths.append(str(csv_path))
+                else:
+                    logger.warning(f"[FlexisExporter] CSV write returned but file missing: {csv_path}")
+            except Exception as e:
+                logger.error(f"[FlexisExporter] Failed to write csv: {type(e).__name__}: {e}")
 
-        logger.info(f"[FlexisExporter] Wrote {', '.join(wrote_paths)}")
-        # Force a visible stdout line (some runners filter logging levels)
         try:
-            print("[FlexisExporter] Wrote:")
+            print("[FlexisExporter] exists after write:", "csv=", csv_path.exists(), "parquet=", pq_path.exists())
+        except Exception:
+            pass
+        try:
+            sys.stdout.flush()
+        except Exception:
+            pass
+
+        try:
+            logger.debug("[FlexisExporter] wrote_paths interim count=%d", len(wrote_paths))
+        except Exception:
+            pass
+
+        # If still nothing was written, make it explicit
+        if not wrote_paths:
+            logger.error("[FlexisExporter] No output file was written — check permissions/paths and RS3_FLEXIS_FMT.")
+            try:
+                print("[FlexisExporter] No output file was written — check permissions/paths and RS3_FLEXIS_FMT.")
+            except Exception:
+                pass
+
+        # Optional mirroring (disabled by default). Enable with RS3_FLEXIS_MIRROR=1
+        do_mirror_env = (os.getenv("RS3_FLEXIS_MIRROR", "0").strip().lower() or "0")
+        do_mirror = do_mirror_env in ("1", "true", "yes", "on")
+        if do_mirror:
+            alt_outdirs = []
+            # Try a few conventional locations
+            for attr in ("output_dir",):
+                v = getattr(ctx, attr, None)
+                if isinstance(v, (str, Path)) and str(v).strip():
+                    alt_outdirs.append(Path(v))
+            # ctx.output.dir (object or dict)
+            _out = getattr(ctx, "output", None)
+            if isinstance(_out, dict):
+                v = _out.get("dir")
+                if isinstance(v, (str, Path)) and str(v).strip():
+                    alt_outdirs.append(Path(v))
+            else:
+                v = getattr(_out, "dir", None)
+                if isinstance(v, (str, Path)) and str(v).strip():
+                    alt_outdirs.append(Path(v))
+            # ctx.config.output.dir
+            _cfg = getattr(ctx, "config", None)
+            if isinstance(_cfg, dict):
+                v = (_cfg.get("output") or {}).get("dir")
+                if isinstance(v, (str, Path)) and str(v).strip():
+                    alt_outdirs.append(Path(v))
+
+            # Deduplicate and exclude the primary outdir
+            unique_alt = []
+            try:
+                primary_resolved = str(sim_outdir.resolve())
+            except Exception:
+                primary_resolved = str(sim_outdir)
+            seen = {primary_resolved}
+            for p in alt_outdirs:
+                try:
+                    rp = str(Path(p).resolve())
+                except Exception:
+                    rp = str(Path(p))
+                if rp not in seen:
+                    seen.add(rp)
+                    unique_alt.append(Path(rp))
+
+            # Mirror writes into each alternative outdir under a `flexis/` subfolder
+            for alt in unique_alt:
+                try:
+                    alt_flexis = alt / "flexis"
+                    alt_flexis.mkdir(parents=True, exist_ok=True)
+                    alt_pq = alt_flexis / f"{base_name}.parquet"
+                    alt_csv = alt_flexis / f"{base_name}.csv"
+                    if want_parquet:
+                        df_out.to_parquet(alt_pq, index=False)
+                        wrote_paths.append(str(alt_pq))
+                    if want_csv:
+                        df_out.to_csv(alt_csv, index=False)
+                        wrote_paths.append(str(alt_csv))
+                except Exception as _e:
+                    logger.debug(f"[FlexisExporter] Mirror write skipped for {alt}: {type(_e).__name__}: {_e}")
+        else:
+            logger.debug("[FlexisExporter] Mirroring disabled (RS3_FLEXIS_MIRROR=%s)", do_mirror_env)
+
+        # Create/refresh convenient "latest" copies in the primary flexis dir
+        try:
+            if want_csv:
+                latest_csv = flexis_dir / "flexis_latest.csv"
+                shutil.copyfile(csv_path, latest_csv)
+                wrote_paths.append(str(latest_csv))
+            if want_parquet:
+                latest_pq = flexis_dir / "flexis_latest.parquet"
+                shutil.copyfile(pq_path, latest_pq)
+                wrote_paths.append(str(latest_pq))
+        except Exception as _e:
+            logger.debug(f"[FlexisExporter] latest copy skipped: {type(_e).__name__}: {_e}")
+
+        for _p in wrote_paths:
+            logger.warning(f"[FlexisExporter] Écrit → {_p}")
+        try:
+            print("[FlexisExporter] Écrit:")
             for p in wrote_paths:
                 print(" -", p)
         except Exception:
             pass
+        try:
+            sys.stdout.flush()
+        except Exception:
+            pass
+
+        # Persist a human-readable summary to disk (survives logging silencing)
+        try:
+            summary_path = flexis_dir / "__export_summary.txt"
+            lines = []
+            lines.append(f"MODULE_VERSION={MODULE_VERSION}")
+            lines.append(f"sim_outdir={sim_outdir}")
+            lines.append(f"rows={len(df_out)}")
+            try:
+                lines.append(f"cols={df_out.shape[1]}")
+            except Exception:
+                pass
+            lines.append(f"want_csv={want_csv}")
+            lines.append(f"want_parquet={want_parquet}")
+            lines.append("targets:")
+            lines.append(f" - csv: {csv_path}")
+            lines.append(f" - parquet: {pq_path}")
+            if wrote_paths:
+                lines.append("written:")
+                for p in wrote_paths:
+                    lines.append(f" - {p}")
+            else:
+                lines.append("written: (none)")
+            # include a tiny preview of flexis_* columns presence
+            try:
+                fx_cols = [c for c in df_out.columns if isinstance(c, str) and c.startswith('flexis_')]
+                lines.append("flexis_columns:")
+                for c in fx_cols:
+                    try:
+                        non_na = int(pd.Series(df_out[c]).notna().sum())
+                        uniq = int(pd.Series(df_out[c]).nunique(dropna=True))
+                        lines.append(f" - {c}: non_na={non_na}, unique={uniq}")
+                    except Exception:
+                        lines.append(f" - {c}: (stats failed)")
+            except Exception:
+                pass
+            summary_path.write_text("\n".join(lines) + "\n")
+        except Exception as _e:
+            logger.debug(f"[FlexisExporter] summary write skipped: {type(_e).__name__}: {_e}")
+
+        try:
+            if wrote_paths:
+                logger.warning("[FlexisExporter] summary: %d file(s) written", len(wrote_paths))
+            else:
+                logger.warning("[FlexisExporter] summary: 0 file written")
+        except Exception:
+            pass
+
+        logger.debug(f"[FlexisExporter] primary_sim_outdir={sim_outdir}")
 
         # 4) remettre dans le ctx (chaînage éventuel)
         try:
@@ -764,6 +1069,21 @@ class Stage:
         except Exception:
             pass
 
+        logger.warning("[FlexisExporter] TRACE Z: exiting process with wrote_paths count=%d", len(wrote_paths))
+        # Persist wrote_paths to instance for later access (e.g., run)
+        try:
+            self._last_wrote_paths = list(wrote_paths)
+        except Exception:
+            self._last_wrote_paths = []
+        # Emit a concise one-liner to the core2.pipeline logger so it always shows up in stage logs
+        try:
+            corelog = logging.getLogger("core2.pipeline")
+            if wrote_paths:
+                corelog.warning("[FlexisExporter] wrote %d file(s): %s", len(wrote_paths), ", ".join(wrote_paths[:3]) + (" …" if len(wrote_paths) > 3 else ""))
+            else:
+                corelog.warning("[FlexisExporter] wrote 0 file — check RS3_FLEXIS_FMT/config and write permissions for %s", str(flexis_dir))
+        except Exception:
+            pass
         return df_out
 
     def run(self, ctx):
@@ -773,13 +1093,40 @@ class Stage:
             df = getattr(ctx, "timeline", None)
         if df is None:
             return {"ok": False, "msg": "flexis_export.Stage.run: no dataframe found on ctx (expected ctx.df or ctx.timeline)"}
-
         try:
+            try:
+                logging.getLogger("core2.pipeline").warning("[FlexisExporter] run(): calling process()")
+            except Exception:
+                pass
             self.process(df, ctx)
         except Exception as e:
+            try:
+                corelog = logging.getLogger("core2.pipeline")
+                corelog.error("[FlexisExporter] exception in process(): %s\n%s", e, traceback.format_exc())
+            except Exception:
+                pass
             return {"ok": False, "msg": f"flexis_export.Stage.run failed: {e}"}
 
-        msg = f"Wrote {self.last_out_path}" if self.last_out_path else "flexis export written"
+        # Emit a concise one-liner to core2.pipeline *after* process returns, to ensure it appears between stage start and OK.
+        try:
+            corelog = logging.getLogger("core2.pipeline")
+            wrote = self._last_wrote_paths or []
+            n = len(wrote)
+            # Resolve primary flexis dir for the hint when nothing was written
+            sim_outdir = Path(_resolve_outdir(ctx, default_dir=str(Path("data") / "simulations")))
+            flexis_dir = sim_outdir / "flexis"
+            if n:
+                corelog.warning("[FlexisExporter] wrote %d file(s): %s", n, ", ".join(wrote[:3]) + (" …" if n > 3 else ""))
+            else:
+                corelog.warning("[FlexisExporter] wrote 0 file — check RS3_FLEXIS_FMT/config and write permissions for %s", str(flexis_dir))
+        except Exception:
+            pass
+
+        msg = (
+            f"{MODULE_VERSION}: wrote {self.last_out_path}"
+            if self.last_out_path
+            else f"{MODULE_VERSION}: flexis export completed (no path recorded)"
+        )
         return {"ok": True, "msg": msg}
 
 # Backward-compatibility alias

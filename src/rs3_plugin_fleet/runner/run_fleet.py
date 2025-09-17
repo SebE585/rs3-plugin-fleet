@@ -16,6 +16,8 @@ from copy import deepcopy
 from typing import Dict, Any, Tuple, List
 
 import yaml
+from pathlib import Path
+import datetime as dt
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -55,6 +57,41 @@ def run_pipeline(pipeline, ctx) -> None:
     """Exécute le pipeline."""
     logger.info("Lancement du pipeline...")
     pipeline.run(ctx)
+
+
+# ----------------------------
+# Contexte: garantir un outdir très tôt
+# ----------------------------
+def _ensure_ctx_outdir(ctx, cfg: Dict[str, Any]) -> None:
+    """Fixe ctx.outdir (et ctx.sim_id) le plus tôt possible si absent.
+
+    Ordre de résolution:
+      1) si ctx.outdir déjà défini et non vide, ne rien faire
+      2) cfg['outdir'] comme base sinon "data/simulations"
+      3) cfg['sim_id'] sinon un identifiant temporel "simulated_YYYYMMDD_HHMMSS"
+    """
+    # 1) Ne rien faire si déjà présent
+    outdir_current = getattr(ctx, "outdir", None)
+    if isinstance(outdir_current, (str, Path)) and str(outdir_current):
+        logger.debug("ctx.outdir déjà défini: %s", outdir_current)
+        return
+
+    # 2) Base + sim_id
+    base = cfg.get("outdir") or "data/simulations"
+    sim_id = cfg.get("sim_id")
+    if not sim_id:
+        # identifiant temporel stable à la seconde près
+        sim_id = f"simulated_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        cfg["sim_id"] = sim_id  # on propage aussi dans la cfg pour les stages suivants
+
+    resolved = Path(base) / sim_id
+    resolved.mkdir(parents=True, exist_ok=True)
+
+    # Marquer sur le contexte
+    setattr(ctx, "sim_id", getattr(ctx, "sim_id", sim_id))
+    setattr(ctx, "outdir", resolved)
+
+    logger.info("[CTX] outdir fixé très tôt → %s", resolved.as_posix())
 
 
 # ----------------------------
@@ -121,6 +158,7 @@ def _prepare_single_vehicle_cfg(cfg: Dict[str, Any], vehicle: Dict[str, Any]) ->
 def _run_once(cfg: Dict[str, Any], config_path: str) -> None:
     """Construit et exécute un pipeline à partir d'une config déjà finalisée."""
     pipeline, ctx = build_pipeline_and_ctx_dyn(cfg, config_path)
+    _ensure_ctx_outdir(ctx, cfg)
     run_pipeline(pipeline, ctx)
 
 
