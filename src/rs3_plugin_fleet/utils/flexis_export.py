@@ -172,6 +172,94 @@ def _trim_tail_idle(df: pd.DataFrame, tail_window_s: float = 5.0) -> pd.DataFram
     return df
 
 # ------------------------------------------------------------
+# Régularisation de l'axe temps à 10 Hz (100 ms)
+# ------------------------------------------------------------
+def _regularize_time_10hz(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Régularise l'axe temps à 10 Hz (100 ms) en:
+      - regroupant les échantillons par buckets de 100 ms,
+      - réindexant sur la grille régulière complète,
+      - interpolant/ffill les colonnes numériques,
+      - ffill/bfill les colonnes non numériques,
+      - recalculant ts_ms / time_utc / timestamp / t_ms.
+    Si `ts_ms` est indisponible ou invalide, la fonction retourne le df inchangé.
+    """
+    if df is None or len(df) == 0:
+        return df
+    if "ts_ms" not in df.columns:
+        return df
+
+    try:
+        ts_ms = pd.to_numeric(df["ts_ms"], errors="coerce").astype("Int64")
+    except Exception:
+        return df
+    if ts_ms.isna().all():
+        return df
+
+    # Bucketisation à 100 ms
+    bucket = (ts_ms // 100) * 100
+
+    df2 = df.copy()
+    df2["__bucket_ms"] = bucket
+
+    # Prépare une agrégation "last" pour toutes les colonnes
+    agg_dict = {}
+    for c in df2.columns:
+        if c == "__bucket_ms":
+            continue
+        agg_dict[c] = "last"
+
+    try:
+        g = df2.groupby("__bucket_ms", sort=True).agg(agg_dict)
+    except Exception:
+        # En cas d'échec inattendu, ne pas bloquer l'export
+        return df
+
+    # Grille régulière 10 Hz
+    try:
+        start = int(bucket.dropna().min())
+        stop = int(bucket.dropna().max()) + 100
+    except Exception:
+        return df
+    idx = pd.RangeIndex(start=start, stop=stop, step=100)
+    g = g.reindex(idx)
+
+    # Remplissage/interpolation
+    for c in g.columns:
+        s = g[c]
+        # Ne jamais interpoler explicitement les timestamps; on les reconstruit ensuite
+        if c in ("ts_ms", "time_utc", "timestamp", "t_ms", "t_s", "t_abs_s"):
+            continue
+        if pd.api.types.is_numeric_dtype(s):
+            try:
+                g[c] = pd.to_numeric(s, errors="coerce")
+            except Exception:
+                pass
+            # interpolation linéaire temporelle puis ffill/bfill
+            try:
+                g[c] = g[c].interpolate(method="linear", limit_direction="both")
+            except Exception:
+                pass
+            g[c] = g[c].ffill().bfill()
+        else:
+            # objets / catégorielles / bool → propagation
+            g[c] = s.ffill().bfill()
+
+    # Reconstruire les colonnes temps
+    g["ts_ms"] = g.index.astype("int64")
+    g["time_utc"] = pd.to_datetime(g["ts_ms"], unit="ms", utc=True)
+    g["timestamp"] = g["time_utc"]
+    try:
+        g["t_ms"] = (g["ts_ms"] - int(g["ts_ms"].iloc[0])).clip(lower=0)
+    except Exception:
+        g["t_ms"] = 0
+
+    # Nettoyage et sortie
+    if "__bucket_ms" in g.columns:
+        g = g.drop(columns=["__bucket_ms"], errors="ignore")
+    return g.reset_index(drop=True)
+
+# ------------------------------------------------------------
 # Résolution robuste de outdir / run_name depuis le ctx
 # ------------------------------------------------------------
 def _resolve_outdir(ctx, default_dir: str) -> str:
@@ -477,6 +565,12 @@ def _ensure_flexis_columns(df: pd.DataFrame, ctx) -> pd.DataFrame:
             "weather_timeline": wt or [],
             "export_after_enrich": False,
         })
+        # Ensure FlexisEnricher has a real logger (avoid dict/None which breaks .debug calls)
+        try:
+            if (not hasattr(fx, "logger")) or isinstance(getattr(fx, "logger"), dict) or (getattr(fx, "logger") is None):
+                fx.logger = logging.getLogger("rs3_plugin_fleet.flexis.enricher")
+        except Exception:
+            pass
         # Call FlexisEnricher in a version-agnostic way (compat with older/newer APIs)
         _fx_in = df.copy()
         fx_df = None
@@ -657,6 +751,15 @@ class Stage:
 
         # 2) trim de la queue "à l'arrêt"
         df = _trim_tail_idle(df, self.cfg.tail_window_s)
+        # 2.5) Régularisation de l'axe temps à 10 Hz (100 ms)
+        try:
+            df = _regularize_time_10hz(df)
+            try:
+                logging.getLogger("core2.pipeline").warning("[FlexisExporter] time regularized to 10Hz (buckets=100ms)")
+            except Exception:
+                pass
+        except Exception as _e_reg:
+            logger.debug(f"[FlexisExporter] regularization skipped: {type(_e_reg).__name__}: {_e_reg}")
 
         # 3) Écriture directement dans le dossier de la simulation
         #    …/simulated_YYYYmmdd_HHMMSS/flexis/flexis_<vehicle>_<sim_id>.<ext>

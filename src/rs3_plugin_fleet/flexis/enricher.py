@@ -5,6 +5,7 @@ import math
 import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -18,6 +19,95 @@ CURVE_RADIUS_THRESHOLD_M = 200.0
 HEADING_SMOOTH_N = 3
 # Fenêtre rolling pour trafic (en secondes)
 TRAFFIC_ROLLING_S = 30.0
+
+
+# --- Time axis helpers ---
+def _median_dt_seconds_from_series(ts: pd.Series) -> float:
+    """Return median positive delta-t in seconds from a datetime-like series."""
+    if ts is None or ts.empty:
+        return 0.0
+    try:
+        t = pd.to_datetime(ts, utc=True, errors="coerce")
+        idx = pd.DatetimeIndex(t)
+        if len(idx) < 2:
+            return 0.0
+        ns = idx.asi8
+        dt = np.diff((ns - ns[0]) / 1e9, prepend=0.0)
+        pos = dt > 0
+        if not np.any(pos):
+            return 0.0
+        return float(np.median(dt[pos]))
+    except Exception:
+        return 0.0
+
+
+def _infer_hz(df: pd.DataFrame) -> float | None:
+    """
+    Best-effort Hz inference from time columns (time_utc, timestamp, t_abs_s).
+    Returns None if it cannot be inferred.
+    """
+    # Prefer explicit millisecond ticks if present
+    if "ts_ms" in df.columns:
+        try:
+            ts = pd.to_numeric(df["ts_ms"], errors="coerce").astype("float64")
+            d = ts.diff().dropna()
+            d = d[d > 0]
+            if len(d):
+                med_ms = float(d.median())
+                if med_ms > 0:
+                    return 1000.0 / med_ms
+        except Exception:
+            pass
+
+    # Try time_utc then timestamp
+    for col in ("time_utc", "timestamp"):
+        if col in df.columns:
+            dt = _median_dt_seconds_from_series(df[col])
+            if dt > 0:
+                return 1.0 / dt
+
+    # Fallback to t_abs_s
+    if "t_abs_s" in df.columns:
+        try:
+            t = pd.to_numeric(df["t_abs_s"], errors="coerce").astype("float64")
+            d = t.diff().dropna()
+            d = d[d > 0]
+            if len(d):
+                med_s = float(d.median())
+                if med_s > 0:
+                    return 1.0 / med_s
+        except Exception:
+            pass
+
+    return None
+
+
+def _log_time_axis_health(logger: logging.Logger, df: pd.DataFrame, hz: float | None) -> None:
+    """Log basic diagnostics about the time axis without mutating the DataFrame."""
+    try:
+        dup_ts_ms = int(df["ts_ms"].duplicated().sum()) if "ts_ms" in df.columns else -1
+    except Exception:
+        dup_ts_ms = -1
+
+    mono_utc = None
+    if "time_utc" in df.columns:
+        try:
+            t = pd.to_datetime(df["time_utc"], errors="coerce", utc=True)
+            mono_utc = bool(t.is_monotonic_increasing)
+            med_dt_s = _median_dt_seconds_from_series(df["time_utc"])
+        except Exception:
+            mono_utc = None
+            med_dt_s = 0.0
+    else:
+        med_dt_s = 0.0
+
+    logger.debug(
+        "[FlexisEnricher] time axis: hz_inferred=%s, dt_med_s=%.3f, time_utc_monotone=%s, ts_ms_dups=%s",
+        (f"{hz:.3f}" if hz else "None"),
+        float(med_dt_s),
+        mono_utc if mono_utc is not None else "NA",
+        dup_ts_ms if dup_ts_ms >= 0 else "NA",
+    )
 
 
 @dataclass
@@ -209,7 +299,7 @@ class FlexisEnricher:
         # sinon index
         return pd.to_datetime(df.index, errors="coerce")
 
-    def _compute_traffic_level(self, df: pd.DataFrame) -> pd.Series:
+    def _compute_traffic_level(self, df: pd.DataFrame, hz: float | None = None) -> pd.Series:
         labels = self.cfg.labels["traffic"]
         # 1) timeline YAML si présente
         if self.cfg.traffic_profile:
@@ -219,11 +309,24 @@ class FlexisEnricher:
 
         # 2) fallback: rolling speed quantiles par type de route
         speed = pd.to_numeric(df.get("speed", pd.Series(index=df.index, dtype="float64"))).fillna(0.0)
-        if "t_abs_s" in df.columns:
-            # rolling par temps discret -> approx via points; assume fréquence quasi constante
-            win = max(5, int(round(TRAFFIC_ROLLING_S / max(1.0, float(np.median(np.diff(df["t_abs_s"].values.astype(float), prepend=df["t_abs_s"].values[0])))))))
+        # Choix d'une fenêtre en points, stable vis-à-vis de petites irrégularités temporelles.
+        if hz and hz > 0:
+            win = int(max(5, round(TRAFFIC_ROLLING_S * hz)))
+        elif "t_abs_s" in df.columns:
+            # Approxime la fréquence à partir de t_abs_s si possible
+            try:
+                t = pd.to_numeric(df["t_abs_s"], errors="coerce").astype("float64")
+                d = t.diff().dropna()
+                d = d[d > 0]
+                med = float(d.median()) if len(d) else 0.0
+                est_hz = (1.0 / med) if med > 0 else 10.0
+            except Exception:
+                est_hz = 10.0
+            win = int(max(5, round(TRAFFIC_ROLLING_S * est_hz)))
         else:
-            win = 30  # points
+            # fallback conservateur
+            win = 30
+
         v_roll = speed.rolling(win, min_periods=max(3, win // 3)).median()
 
         # thresholds dynamiques via quantiles globaux
@@ -334,7 +437,12 @@ class FlexisEnricher:
         v_arrive = 1.2    # m/s ~ 4.3 km/h
         v_stop = 0.3      # m/s
         v_depart = 1.5    # m/s  (plus permissif pour capter la reprise)
-        win_pts = 7       # points pour lissage/hystérésis (un peu plus large)
+        # fenêtre ~1s si la fréquence est connue, sinon valeur par défaut
+        inferred_hz = getattr(self, "_hz", None)
+        if inferred_hz and inferred_hz > 0:
+            win_pts = int(max(5, round(1.0 * inferred_hz)))
+        else:
+            win_pts = 7
 
         # prox stop (au sens core2)
         near_stop = df.get("flag_stop", pd.Series(False, index=df.index)).fillna(False).astype(bool)
@@ -448,6 +556,10 @@ class FlexisEnricher:
 
         df = df_in.copy()
 
+        # --- Diagnostics & Hz inference (sans mutation de l'axe temps)
+        self._hz = _infer_hz(df)
+        _log_time_axis_health(self.logger, df, self._hz)
+
         # journalisation d'entrée
         cols = list(df.columns)
         self._dbg(f"input columns: {cols}")
@@ -459,7 +571,7 @@ class FlexisEnricher:
         self._dbg(f"road_type source: {road_src}")
 
         # trafic & météo
-        traffic = self._compute_traffic_level(df)
+        traffic = self._compute_traffic_level(df, hz=self._hz)
         weather = self._compute_weather(df)
 
         # night
