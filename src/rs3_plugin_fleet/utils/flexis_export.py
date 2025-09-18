@@ -17,7 +17,40 @@ from rs3_plugin_fleet.flexis.enricher import FlexisEnricher, _extract_schedules_
 
 logger = logging.getLogger(__name__)
 
+
 MODULE_VERSION = "flexis_export/2025-09-17-1"
+
+# --- Logging/verbosity helpers and env docs ---------------------------------
+# ENV VARS (runtime):
+# - RS3_FLEXIS_FMT: one of {csv, parquet, both}. If unset and running in CI
+#   (RS3_CI=1 or CI=true/yes/on/1), defaults to "both".
+# - RS3_FLEXIS_MIRROR: mirror writes to alternative outdirs discovered in ctx.
+# - RS3_PRIMARY_OUTDIR / RS3_OUTDIR / RS3_REPORT_DIR / RS3_EXPORT_DIR:
+#   hints written by _force_ctx_outdir() to keep stages aligned.
+# - RS3_FLEXIS_VERBOSE: if set to a truthy value, keeps verbose "TRACE" logs
+#   at WARNING level; otherwise they are downgraded to DEBUG to reduce noise.
+#
+# Tip: set RS3_FLEXIS_VERBOSE=1 when debugging exporter behavior locally.
+
+_TRUTHY = {"1", "true", "yes", "on"}
+
+def _is_truthy_env(name: str) -> bool:
+    try:
+        v = os.getenv(name, "")
+        return v.strip().lower() in _TRUTHY
+    except Exception:
+        return False
+
+def _is_verbose() -> bool:
+    return _is_truthy_env("RS3_FLEXIS_VERBOSE")
+
+def _ci_default_fmt() -> Optional[str]:
+    # If RS3_FLEXIS_FMT is unset and we are in CI, default to "both"
+    if os.getenv("RS3_FLEXIS_FMT", "").strip():
+        return None
+    if _is_truthy_env("RS3_CI") or _is_truthy_env("CI"):
+        return "both"
+    return None
 
 def _log_banner_start(ctx, sim_outdir: Path):
     try:
@@ -265,23 +298,31 @@ def _regularize_time_10hz(df: pd.DataFrame) -> pd.DataFrame:
 def _resolve_outdir(ctx, default_dir: str) -> str:
     """
     Essaie diverses conventions pour retrouver le même outdir que le core/rapports.
+    Ordre de priorité :
+      1) ctx.outdir, ctx.output_dir, ctx.out_dir
+      2) ctx.output.dir (objet) ou ctx.output["dir"] (dict)
+      3) ctx.config['output']['dir'] ou ctx.config['outdir']
+      4) ctx.cfg['output']['dir'] ou ctx.cfg['outdir']   # (nouveau)
+      5) default_dir
     """
+    # 1) Attributs directs
     for attr in ("outdir", "output_dir", "out_dir"):
         val = getattr(ctx, attr, None)
         if isinstance(val, (str, Path)) and str(val).strip():
             return str(val)
 
+    # 2) ctx.output (dict ou objet avec .dir)
     output = getattr(ctx, "output", None)
-    if output is not None:
-        if isinstance(output, dict):
-            val = output.get("dir")
-            if isinstance(val, (str, Path)) and str(val).strip():
-                return str(val)
-        else:
-            val = getattr(output, "dir", None)
-            if isinstance(val, (str, Path)) and str(val).strip():
-                return str(val)
+    if isinstance(output, dict):
+        val = output.get("dir")
+        if isinstance(val, (str, Path)) and str(val).strip():
+            return str(val)
+    else:
+        val = getattr(output, "dir", None)
+        if isinstance(val, (str, Path)) and str(val).strip():
+            return str(val)
 
+    # 3) ctx.config (dict)
     config = getattr(ctx, "config", None)
     if isinstance(config, dict):
         out = config.get("output") or {}
@@ -289,7 +330,199 @@ def _resolve_outdir(ctx, default_dir: str) -> str:
         if isinstance(val, (str, Path)) and str(val).strip():
             return str(val)
 
+    # 4) ctx.cfg (dict) — nouveau fallback pour compatibilité
+    cfg = getattr(ctx, "cfg", None)
+    if isinstance(cfg, dict):
+        out = cfg.get("output") or {}
+        val = out.get("dir") or cfg.get("outdir")
+        if isinstance(val, (str, Path)) and str(val).strip():
+            return str(val)
+
+    # 5) défaut
     return default_dir
+
+# ------------------------------------------------------------
+# Helper: force aggressive outdir alignment in ctx
+# ------------------------------------------------------------
+def _force_ctx_outdir(ctx, sim_outdir: Path) -> None:
+    """
+    Aligne de façon agressive l'outdir dans le contexte pour éviter les divergences
+    entre les stages (ex: Exporter core2 qui utiliserait une autre source).
+    Met à jour : ctx.outdir, ctx.output_dir, ctx.output.dir, ctx.config['output']['dir'].
+    """
+    try:
+        # primitives directes
+        try:
+            setattr(ctx, "outdir", str(sim_outdir))
+        except Exception:
+            pass
+        try:
+            setattr(ctx, "output_dir", str(sim_outdir))
+        except Exception:
+            pass
+
+        # ctx.output peut être un objet ou un dict
+        out = getattr(ctx, "output", None)
+        if isinstance(out, dict):
+            try:
+                out["dir"] = str(sim_outdir)
+            except Exception:
+                pass
+        else:
+            try:
+                setattr(out, "dir", str(sim_outdir))
+            except Exception:
+                pass
+
+        # ctx.config peut être un dict imbriqué
+        cfg = getattr(ctx, "config", None)
+        if isinstance(cfg, dict):
+            try:
+                cfg_out = cfg.get("output")
+                if not isinstance(cfg_out, dict):
+                    cfg_out = {}
+                    cfg["output"] = cfg_out
+                cfg_out["dir"] = str(sim_outdir)
+            except Exception:
+                pass
+
+        # --- NEW: also align ctx.cfg and common report/export holders ---
+        try:
+            _cfg = getattr(ctx, "cfg", None)
+            if isinstance(_cfg, dict):
+                # ensure cfg['output']['dir']
+                try:
+                    _cfg_out = _cfg.get("output")
+                    if not isinstance(_cfg_out, dict):
+                        _cfg_out = {}
+                        _cfg["output"] = _cfg_out
+                    _cfg_out["dir"] = str(sim_outdir)
+                except Exception:
+                    pass
+                # also try to steer report/export sub-configs that some stages read
+                try:
+                    _cfg_report = _cfg.get("report")
+                    if not isinstance(_cfg_report, dict):
+                        _cfg_report = {}
+                        _cfg["report"] = _cfg_report
+                    _cfg_report["dir"] = str(sim_outdir)
+                except Exception:
+                    pass
+                try:
+                    _cfg_export = _cfg.get("export")
+                    if not isinstance(_cfg_export, dict):
+                        _cfg_export = {}
+                        _cfg["export"] = _cfg_export
+                    _cfg_export["dir"] = str(sim_outdir)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Try to align typical alternative keys some exporters use
+        try:
+            # A helper to set a bunch of equivalent keys on a dict-like section
+            def _set_many(dct, keys, value):
+                if not isinstance(dct, dict):
+                    return
+                for k in keys:
+                    try:
+                        dct[k] = str(value)
+                    except Exception:
+                        pass
+
+            # ctx.cfg.* extended
+            _cfg2 = getattr(ctx, "cfg", None)
+            if isinstance(_cfg2, dict):
+                # report section
+                rep = _cfg2.get("report")
+                if isinstance(rep, dict):
+                    _set_many(rep, ["dir", "outdir", "base_dir", "root", "output_dir"], sim_outdir)
+                # export section
+                exp = _cfg2.get("export")
+                if isinstance(exp, dict):
+                    _set_many(exp, ["dir", "outdir", "base_dir", "root", "output_dir"], sim_outdir)
+                # top-level fallbacks sometimes used ad-hoc
+                _set_many(_cfg2, ["report_dir", "report_base_dir", "export_dir", "export_base_dir", "outdir", "output_dir"], sim_outdir)
+        except Exception:
+            pass
+
+        # Expose a few direct attributes some legacy exporters may read
+        try:
+            setattr(ctx, "report_outdir", str(sim_outdir))
+        except Exception:
+            pass
+        try:
+            rep = getattr(ctx, "report", None)
+            if isinstance(rep, dict):
+                rep["dir"] = str(sim_outdir)
+            else:
+                try:
+                    setattr(rep, "dir", str(sim_outdir))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            exp = getattr(ctx, "export", None)
+            if isinstance(exp, dict):
+                exp["dir"] = str(sim_outdir)
+            else:
+                try:
+                    setattr(exp, "dir", str(sim_outdir))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Additional common direct attributes some codebases read
+        try:
+            setattr(ctx, "report_dir", str(sim_outdir))
+        except Exception:
+            pass
+        try:
+            setattr(ctx, "report_base_dir", str(sim_outdir))
+        except Exception:
+            pass
+        try:
+            setattr(ctx, "export_dir", str(sim_outdir))
+        except Exception:
+            pass
+        try:
+            setattr(ctx, "export_base_dir", str(sim_outdir))
+        except Exception:
+            pass
+
+        # Déposer un "hint" visible pour les autres stages/outils + variable d'environnement
+        try:
+            os.environ["RS3_PRIMARY_OUTDIR"] = str(sim_outdir)
+        except Exception:
+            pass
+        try:
+            os.environ["RS3_OUTDIR"] = str(sim_outdir)
+            os.environ["RS3_REPORT_DIR"] = str(sim_outdir)
+            os.environ["RS3_REPORT_OUTDIR"] = str(sim_outdir)
+            os.environ["RS3_EXPORT_DIR"] = str(sim_outdir)
+            os.environ["RS3_EXPORT_OUTDIR"] = str(sim_outdir)
+        except Exception:
+            pass
+        try:
+            hint_path = Path(sim_outdir) / "__outdir_hint.txt"
+            hint_payload = (
+                f"resolved_outdir={sim_outdir}\n"
+                f"source=flexis_export._force_ctx_outdir\n"
+                f"env.RS3_PRIMARY_OUTDIR={os.environ.get('RS3_PRIMARY_OUTDIR','')}\n"
+                f"env.RS3_OUTDIR={os.environ.get('RS3_OUTDIR','')}\n"
+                f"env.RS3_REPORT_DIR={os.environ.get('RS3_REPORT_DIR','')}\n"
+                f"env.RS3_EXPORT_DIR={os.environ.get('RS3_EXPORT_DIR','')}\n"
+            )
+            hint_path.parent.mkdir(parents=True, exist_ok=True)
+            hint_path.write_text(hint_payload)
+        except Exception:
+            pass
+    except Exception:
+        # Ne jamais bloquer l'export sur un simple alignement d'outdir
+        pass
 
 def _resolve_run_name(ctx, default_filename: str) -> str:
     """
@@ -716,6 +949,7 @@ class Stage:
 
         # Resolve outdir very early so we can drop probe files even if logging is muted
         sim_outdir = Path(_resolve_outdir(ctx, default_dir=str(Path("data") / "simulations")))
+        _force_ctx_outdir(ctx, sim_outdir)
         flexis_dir = sim_outdir / "flexis"
         try:
             flexis_dir.mkdir(parents=True, exist_ok=True)
@@ -803,7 +1037,9 @@ class Stage:
                 (flexis_dir / "__probe_after_ensure.txt").write_text("after_ensure\n")
             except Exception as _e:
                 logger.debug(f"[FlexisExporter] probe after ensure skipped: {type(_e).__name__}: {_e}")
-            logger.warning("[FlexisExporter] TRACE A: after _ensure_flexis_columns")
+            (logger.warning if _is_verbose() else logger.debug)(
+                "[FlexisExporter] TRACE A: after _ensure_flexis_columns"
+            )
         except Exception as e:
             # Ne bloque pas l'export si le fallback plante : log + probe d'échec et on continue
             try:
@@ -881,7 +1117,9 @@ class Stage:
                 cols_order.append(c)
 
         df_out = df[cols_order].copy()
-        logger.warning("[FlexisExporter] TRACE B: after df_out build shape=%s", str(df_out.shape))
+        (logger.warning if _is_verbose() else logger.debug)(
+            "[FlexisExporter] TRACE B: after df_out build shape=%s", str(df_out.shape)
+        )
 
         # Preserve existing flexis_* from upstream stages; only fill blanks in df_out
         for _col in [c for c in df.columns if isinstance(c, str) and c.startswith("flexis_")]:
@@ -937,7 +1175,9 @@ class Stage:
 
         # === CHECKPOINT: before write section ===
         try:
-            logger.warning("[FlexisExporter] checkpoint A: df_out size rows=%d cols=%d", len(df_out), df_out.shape[1])
+            (logger.warning if _is_verbose() else logger.debug)(
+                "[FlexisExporter] checkpoint A: df_out size rows=%d cols=%d", len(df_out), df_out.shape[1]
+            )
         except Exception:
             pass
         try:
@@ -953,17 +1193,25 @@ class Stage:
 
         # 1) Allow env override of formats: RS3_FLEXIS_FMT in {parquet,csv,both}
         fmt_env = (os.getenv("RS3_FLEXIS_FMT", "").strip().lower() or "").strip()
+        # CI default: if RS3_FLEXIS_FMT is unset and RS3_CI/CI is truthy, use "both"
+        ci_fmt = _ci_default_fmt()
+        if not fmt_env and ci_fmt:
+            fmt_env = ci_fmt
+
         if fmt_env in ("parquet", "csv", "both"):
             want_parquet = fmt_env in ("parquet", "both")
             want_csv = fmt_env in ("csv", "both")
         else:
             want_parquet = bool(self.cfg.write_parquet)
             want_csv = bool(self.cfg.write_csv)
-        logger.warning("[FlexisExporter] TRACE C: format decision csv=%s parquet=%s", want_csv, want_parquet)
+
+        (logger.warning if _is_verbose() else logger.debug)(
+            "[FlexisExporter] TRACE C: format decision csv=%s parquet=%s", want_csv, want_parquet
+        )
 
         # Log chosen formats and target paths for visibility
         try:
-            logger.warning(
+            (logger.warning if _is_verbose() else logger.debug)(
                 "[FlexisExporter] formats → csv=%s parquet=%s | targets: csv=%s parquet=%s",
                 want_csv,
                 want_parquet,
@@ -1166,6 +1414,41 @@ class Stage:
 
         logger.debug(f"[FlexisExporter] primary_sim_outdir={sim_outdir}")
 
+        # Sanity check: outdir coherence across common ctx holders (non-failing)
+        try:
+            def _norm(p):
+                try:
+                    return str(Path(p).resolve())
+                except Exception:
+                    return str(p)
+            expected = _norm(sim_outdir)
+            candidates = []
+            for attr in ("outdir", "output_dir", "report_dir", "export_dir"):
+                v = getattr(ctx, attr, None)
+                if isinstance(v, (str, Path)) and str(v).strip():
+                    candidates.append((attr, _norm(v)))
+            out = getattr(ctx, "output", None)
+            if isinstance(out, dict):
+                v = out.get("dir")
+                if isinstance(v, (str, Path)) and str(v).strip():
+                    candidates.append(("output.dir", _norm(v)))
+            else:
+                v = getattr(out, "dir", None)
+                if isinstance(v, (str, Path)) and str(v).strip():
+                    candidates.append(("output.dir", _norm(v)))
+            cfg = getattr(ctx, "config", None)
+            if isinstance(cfg, dict):
+                v = (cfg.get("output") or {}).get("dir")
+                if isinstance(v, (str, Path)) and str(v).strip():
+                    candidates.append(("config.output.dir", _norm(v)))
+            mismatches = [(k, v) for (k, v) in candidates if v != expected]
+            if mismatches:
+                logger.warning("[FlexisExporter][Sanity] outdir mismatch(s): expected=%s, got=%s", expected, "; ".join([f"{k}={v}" for k, v in mismatches]))
+            else:
+                (logger.info if _is_verbose() else logger.debug)("[FlexisExporter][Sanity] outdir coherent: %s", expected)
+        except Exception:
+            pass
+
         # 4) remettre dans le ctx (chaînage éventuel)
         try:
             setattr(ctx, "df", df_out)
@@ -1197,6 +1480,9 @@ class Stage:
         if df is None:
             return {"ok": False, "msg": "flexis_export.Stage.run: no dataframe found on ctx (expected ctx.df or ctx.timeline)"}
         try:
+            # Aligner l'outdir le plus tôt possible pour les stages suivants (ex: Exporter core2)
+            _sim_outdir = Path(_resolve_outdir(ctx, default_dir=str(Path("data") / "simulations")))
+            _force_ctx_outdir(ctx, _sim_outdir)
             try:
                 logging.getLogger("core2.pipeline").warning("[FlexisExporter] run(): calling process()")
             except Exception:
